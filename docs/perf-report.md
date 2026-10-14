@@ -1,25 +1,27 @@
 # Souq — performance report
 
-Status: **measured 2026-10-14 — the standard-path SLO is not met on a single laptop.** Every number below
-comes from a k6 run (`loadtest/results/`), the direct search probe, or Prometheus; nothing is estimated.
-The overload robustness bugs the runs exposed are fixed (see "Bottlenecks found"); raw capacity is not.
+Status: **measured 2026-10-14 at commit `fba26f5` — the 200 RPS / p95 ≤ 250 ms target is not met on a
+single laptop.** Every number below comes from a k6 run (`docs/reports/k6-*-summary.*`), the direct search
+probe, or Prometheus; nothing is estimated. Five overload bugs found while measuring are fixed and admission
+control was added (see "Bottlenecks found"); raw capacity is the remaining gap.
 
 ## Targets
 
-| Target | Value | Measured | Status |
+| Target | Value | Measured at `fba26f5` | Status |
 |---|---|---|---|
-| Standard path p95 at the gateway, 200 RPS | ≤ 250 ms | 4,615 ms; 99.9 % errors (overload collapse) | **miss** |
-| Standard path p95 at the gateway, 60 RPS (full k6 mix) | ≤ 250 ms | 568 ms; 36 % errors | **miss** |
-| Search service p95, 60 RPS direct (head queries, no gateway) | ≤ 250 ms | 144 ms; 2.5 % 503 | meets latency, not errors |
-| LLM path p95 | ≤ 1200 ms | 967 ms at 60 RPS (replayed synthetic fixtures; not the live model) | indicative only |
-| HTTP error rate | < 1 % | 36 % at 60 RPS, 99.9 % at 200 RPS | **miss** |
-| Arrival rate achieved | < 1 % dropped at 200 RPS | 152 of 200 req/s (9,102 dropped) | **miss** |
-| Index freshness p95 (outbox write → searchable) | ≤ 30 s | p50 6.8 s, p95 8.3 s (1k-row feed, workers agent run) | **meets** |
-| Reranker top-30 p95, quiet CPU (`models/README.md`) | ≤ 120 ms | 105 ms (mMiniLM int8, 4 threads) | meets in isolation |
+| Standard path p95 at the gateway, 200 RPS | ≤ 250 ms | 1,609 ms (p50 216 ms); 83 % errors, mostly immediate `503` + `Retry-After` from admission control | **miss** |
+| Standard path p95 at the gateway, 60 RPS | ≤ 250 ms | 300 ms (p50 31 ms); 11 % errors | **miss** |
+| LLM path p95 | ≤ 1200 ms | not measured under load: k6's long-tail queries have no recorded fixtures, so in replay mode every one fell back to the rule parser (705 ms at 60 RPS is that fallback). Live Haiku 5.5 alone is p50 1.79 s / p95 2.92 s (40 sequential calls) | **miss** (live latency) |
+| HTTP error rate | < 1 % | 11 % at 60 RPS, 83 % at 200 RPS | **miss** |
+| Arrival rate achieved at 200 RPS | < 1 % dropped | 182.5 req/s (659 dropped) | **miss** |
+| Recovery after a 5-minute overload | (not a plan target) | 5/5 searches OK 20 s after the load stopped | ok |
+| Index freshness p95 (outbox write → searchable) | ≤ 30 s | p50 6.8 s, p95 8.3 s (1k-row feed) | **meets** |
+| Reranker top-30 p95, quiet CPU, 4 threads | ≤ 120 ms | 105 ms (mMiniLM int8) | meets in isolation |
 
 Stage budgets (ms, `config/budgets.yaml`; each is a `stage_latency` bucket edge so p95-vs-budget is exact):
 normalise 5 · parse_rule 5 · semantic_cache 15 · parse_llm 800 · embed 50 · bm25 120 · knn 80 · fuse 5 ·
-rerank 120 (re-split from 30/90/60 for embed/bm25/knn after the first runs; total still 250).
+rerank 120 (re-split from 30/90/60 for embed/bm25/knn after the first runs; total still 250). Admission control:
+8 in-flight `/search` per worker, then `503` + `Retry-After: 1`.
 
 ## How to measure
 
@@ -68,6 +70,28 @@ sum by (reason) (rate(degraded_total[5m]))                                      
 
 ## Results
 
+### Final runs at `fba26f5` (admission control on)
+
+Same conditions as below, with the OpenTelemetry demo stack stopped, search at 2 workers × 2 ORT threads,
+4 GB, and admission control at 8 in-flight requests per worker.
+
+| Run | Achieved | Errors | Standard p50 / p95 / max | Long-tail p95 (fell back to rules) | Degraded | Zero-result |
+|---|---|---|---|---|---|---|
+| 200 RPS × 5 min | 182.5 req/s | 83.4 % | 216 / 1,609 / 14,350 ms | 1,775 ms | 99.9 % | 6.5 % |
+| 60 RPS × 2 min | 60.9 req/s | 11.3 % | 31 / 300 / 1,023 ms | 705 ms | 99.7 % | 0.8 % |
+
+- Versus the same 200 RPS run without admission control: errors 99.9 % → 83.4 %, p50 2,977 → 216 ms, and the
+  service recovered on its own (5/5 OK 20 s later). Goodput is still only ~30 req/s at 200 offered.
+- The 14 s max at 200 RPS is unexplained so far; most likely requests queue in the HTTP accept backlog (uvicorn
+  or the gateway's connection pool to search) before the admission check sees them. Not investigated.
+- "Degraded" is ~100 % because reranking is skipped on almost every request: with 2 ORT threads per worker the
+  top-30 rerank runs past its 120 ms budget even unloaded, and under load the circuit breaker sheds it. The
+  rerank nDCG gain in the eval report (budgets ×50) therefore does not reach production in this configuration.
+- Raw k6 output: `docs/reports/k6-200rps-summary.{json,md}`, `docs/reports/k6-60rps-summary.{json,md}`.
+
+### Earlier runs (before admission control)
+
+
 **Run conditions.** Apple M-series laptop, 10 cores / 16 GB; Docker VM 10 vCPU / 7.7 GB shared by the whole
 stack. Compose `apps` profile: `search` (2 uvicorn workers × 2 ORT threads, 4 GB limit) and `gateway`; core
 data services in compose; k6 (`grafana/k6:2.3.0`) inside the compose network. Catalogue: `products_v2`,
@@ -75,7 +99,7 @@ data services in compose; k6 (`grafana/k6:2.3.0`) inside the compose network. Ca
 `SOUQ_LLM_MODE=replay` (synthetic fixtures). Load model: 75 % head / 15 % long-tail / 10 % deep pages,
 205-query pool, `CACHE_MODE=cold`. Uncommitted working tree (no git SHA yet).
 
-### k6, 200 RPS × 5 min (final configuration)
+#### k6, 200 RPS × 5 min (fixes 1–5 in, no admission control)
 
 | Latency (end-to-end at gateway) | p50 | p95 | p99 | max | n |
 |---|---|---|---|---|---|
@@ -87,7 +111,7 @@ almost every request: offered load is ~3× capacity and nothing sheds it, so que
 misses its deadline (congestion collapse). The service now **recovers on its own** within ~20 s of the load
 stopping; before the connection-leak fix below it stayed at 100 % 503 until restarted.
 
-### k6, 60 RPS × 2 min (run immediately after the 200 RPS run)
+#### k6, 60 RPS × 2 min (run immediately after the 200 RPS run)
 
 | Latency (end-to-end at gateway) | p50 | p95 | p99 | max | n |
 |---|---|---|---|---|---|
@@ -98,7 +122,7 @@ Errors 36.3 % · achieved 58.4 req/s · degraded 99.98 % (rerank shed by the bre
 Not isolated: whether the deep-page (PIT) mix, the gateway hop, or residue from the preceding overload run
 accounts for the gap to the direct probe below.
 
-### Direct probe of `services/search` (head queries only, no gateway, 20 s per step)
+#### Direct probe of `services/search` (head queries only, no gateway, 20 s per step)
 
 | Offered RPS | 200 OK | service p95 | kNN ran | reranked | search CPU |
 |---|---|---|---|---|---|
@@ -128,8 +152,9 @@ real long-tail traffic embeds far more often (bge-m3 int8 ≈ 20 ms wall, ~40–
 
 - **Capacity:** at roughly 40–60 RPS per laptop-class search node, 200 RPS needs ~4 search replicas (or a GPU
   for bge-m3 and the cross-encoder), plus OpenSearch sized beyond a single 768 MB-heap node.
-- **Admission control:** bound in-flight requests per worker and fail fast with 503 + `Retry-After` beyond
-  capacity, so overload serves ~capacity successfully instead of collapsing to ~0.
+- **Admission control:** added (`souq_search.admission`, 8 in-flight per worker → `503` + `Retry-After`). It
+  turned collapse into fast shedding and self-recovery, but goodput at 200 RPS is still ~30 req/s; the next step
+  is to bound the queue *before* the app (uvicorn backlog / gateway connection pool) and shed earlier.
 - **Reranking:** at these rates on CPU it is almost entirely shed; the evals also show the mMiniLM reranker
   does not beat plain RRF (`evals/reports/final-offline.json`), so it costs latency budget for no quality.
 - **Not yet investigated:** the deep-page / PIT path under load and the 60 RPS gap between k6 and the probe.

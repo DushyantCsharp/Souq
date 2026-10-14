@@ -1,0 +1,260 @@
+{
+  "run_id": "20261014T075406Z-offline",
+  "git_sha": "fba26f5b52ef9c21bfe3ad22f844141b3c28caf3",
+  "mode": "offline",
+  "created_at": "2026-10-14T07:58:12+00:00",
+  "slices": {
+    "ar": {
+      "bm25": {
+        "ndcg@10": 0.2364,
+        "recall@100": 0.0894,
+        "mrr": 0.5283,
+        "zero_result_rate": 0.2333,
+        "n": 60
+      },
+      "knn": {
+        "ndcg@10": 0.4436,
+        "recall@100": 0.5666,
+        "mrr": 0.7397,
+        "zero_result_rate": 0.0,
+        "n": 60
+      },
+      "rrf": {
+        "ndcg@10": 0.4663,
+        "recall@100": 0.5729,
+        "mrr": 0.7525,
+        "zero_result_rate": 0.0,
+        "n": 60
+      },
+      "rrf_rerank": {
+        "ndcg@10": 0.4572,
+        "recall@100": 0.5729,
+        "mrr": 0.733,
+        "zero_result_rate": 0.0,
+        "n": 60
+      }
+    },
+    "arabizi_mixed": {
+      "bm25": {
+        "ndcg@10": 0.3606,
+        "recall@100": 0.3641,
+        "mrr": 0.6056,
+        "zero_result_rate": 0.2667,
+        "n": 30
+      },
+      "knn": {
+        "ndcg@10": 0.5821,
+        "recall@100": 0.7164,
+        "mrr": 0.7897,
+        "zero_result_rate": 0.0,
+        "n": 30
+      },
+      "rrf": {
+        "ndcg@10": 0.581,
+        "recall@100": 0.7186,
+        "mrr": 0.7794,
+        "zero_result_rate": 0.0,
+        "n": 30
+      },
+      "rrf_rerank": {
+        "ndcg@10": 0.5879,
+        "recall@100": 0.7186,
+        "mrr": 0.7794,
+        "zero_result_rate": 0.0,
+        "n": 30
+      }
+    },
+    "en": {
+      "bm25": {
+        "ndcg@10": 0.5522,
+        "recall@100": 0.5955,
+        "mrr": 0.7626,
+        "zero_result_rate": 0.0,
+        "n": 60
+      },
+      "knn": {
+        "ndcg@10": 0.5611,
+        "recall@100": 0.756,
+        "mrr": 0.7817,
+        "zero_result_rate": 0.0,
+        "n": 60
+      },
+      "rrf": {
+        "ndcg@10": 0.5952,
+        "recall@100": 0.7766,
+        "mrr": 0.7853,
+        "zero_result_rate": 0.0,
+        "n": 60
+      },
+      "rrf_rerank": {
+        "ndcg@10": 0.6102,
+        "recall@100": 0.7766,
+        "mrr": 0.8442,
+        "zero_result_rate": 0.0,
+        "n": 60
+      }
+    },
+    "all": {
+      "bm25": {
+        "ndcg@10": 0.3875,
+        "recall@100": 0.3468,
+        "mrr": 0.6375,
+        "zero_result_rate": 0.1467,
+        "n": 150
+      },
+      "knn": {
+        "ndcg@10": 0.5183,
+        "recall@100": 0.6723,
+        "mrr": 0.7665,
+        "zero_result_rate": 0.0,
+        "n": 150
+      },
+      "rrf": {
+        "ndcg@10": 0.5408,
+        "recall@100": 0.6835,
+        "mrr": 0.771,
+        "zero_result_rate": 0.0,
+        "n": 150
+      },
+      "rrf_rerank": {
+        "ndcg@10": 0.5445,
+        "recall@100": 0.6835,
+        "mrr": 0.7868,
+        "zero_result_rate": 0.0,
+        "n": 150
+      }
+    }
+  },
+  "filter_parse": {
+    "exact_match": 0.9,
+    "n": 80,
+    "per_field": {
+      "price": 0.9375,
+      "currency": 0.9375,
+      "brand": 1.0,
+      "colour": 1.0,
+      "size": 1.0,
+      "category": 1.0
+    },
+    "misses": [
+      "fp037",
+      "fp038",
+      "fp039",
+      "fp040",
+      "fp063",
+      "fp064",
+      "fp065",
+      "fp080"
+    ],
+    "mode": "rule",
+    "rule_only": {
+      "exact_match": 0.9,
+      "n": 80,
+      "per_field": {
+        "price": 0.9375,
+        "currency": 0.9375,
+        "brand": 1.0,
+        "colour": 1.0,
+        "size": 1.0,
+        "category": 1.0
+      },
+      "misses": [
+        "fp037",
+        "fp038",
+        "fp039",
+        "fp040",
+        "fp063",
+        "fp064",
+        "fp065",
+        "fp080"
+      ]
+    },
+    "needs_llm_cases": 8
+  },
+  "latency_ms": {
+    "normalise": {
+      "p50": 0.04,
+      "p95": 0.05
+    },
+    "parse": {
+      "p50": 0.12,
+      "p95": 0.18
+    },
+    "bm25": {
+      "p50": 11.58,
+      "p95": 30.93
+    },
+    "embed": {
+      "p50": 9.32,
+      "p95": 19.3
+    },
+    "knn": {
+      "p50": 17.91,
+      "p95": 27.97
+    },
+    "fuse": {
+      "p50": 0.07,
+      "p95": 0.11
+    },
+    "rerank": {
+      "p50": 87.06,
+      "p95": 134.75
+    },
+    "total": {
+      "p50": 116.65,
+      "p95": 169.3
+    }
+  },
+  "llm": {
+    "path_share": 0.0,
+    "avg_tokens": 0.0,
+    "usd_per_1k_queries": 0.0,
+    "enabled": false
+  },
+  "degraded": {
+    "bm25": {},
+    "knn": {},
+    "rrf": {},
+    "rrf_rerank": {}
+  },
+  "labels": {
+    "ar": {
+      "claude": 2078,
+      "provisional_share": 0.0,
+      "claude_share": 1.0
+    },
+    "arabizi_mixed": {
+      "esci": 212,
+      "claude": 707,
+      "provisional_share": 0.0,
+      "claude_share": 0.7693
+    },
+    "en": {
+      "esci": 1553,
+      "provisional_share": 0.0,
+      "claude_share": 0.0
+    }
+  },
+  "setup": {
+    "index": "souq_eval",
+    "corpus_docs": 8781,
+    "corpus_fingerprint": "f29d6d7d45ebddba",
+    "distractors": 5000,
+    "index_rebuilt": true,
+    "embedder": "bge-m3",
+    "reranker": "mmarco-mMiniLMv2-L12-H384-v1",
+    "doc_embedding_s": 203.9,
+    "field_coverage": {
+      "colour": 0.730440724291083,
+      "size": 0.21649014918574194,
+      "brand": 0.9650381505523289
+    },
+    "budget_scale": 50.0,
+    "overrides": {},
+    "title_ar_coverage": 0.241
+  },
+  "warnings": [
+    "ar: 100% of judgments were graded by Claude (a model) at the maintainer's request, not by a human — they measure agreement with a model's judgement",
+    "arabizi_mixed: 77% of judgments were graded by Claude (a model) at the maintainer's request, not by a human — they measure agreement with a model's judgement"
+  ]
+}

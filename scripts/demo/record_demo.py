@@ -51,7 +51,7 @@ import tempfile
 import threading
 import time
 from collections import Counter
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -88,8 +88,40 @@ DEGRADE_QUERIES = [
     "kids headphones",
     "soundbar for tv",
 ]
-STORM_QUERIES = ["laptop backpack", "led desk lamp", "office chair", "yoga mat", "water bottle", "hair dryer"]
-GATEWAY_STORM_QUERIES = ["smart watch", "phone case", "usb charger", "travel mug", "coffee grinder"]
+STORM_QUERIES = [
+    "laptop backpack",
+    "led desk lamp",
+    "office chair",
+    "yoga mat",
+    "water bottle",
+    "hair dryer",
+    "electric toothbrush",
+    "baby stroller",
+    "dumbbell set",
+    "bed sheets",
+    "rice cooker",
+    "sunglasses for men",
+]
+GATEWAY_STORM_QUERIES = [
+    "smart watch",
+    "phone case",
+    "usb charger",
+    "travel mug",
+    "coffee grinder",
+    "desk organizer",
+    "hdmi cable",
+    "wall clock",
+    "running socks",
+    "power bank",
+    "car phone holder",
+    "throw pillow",
+    "screen protector",
+    "bike helmet",
+    "garden hose",
+    "kitchen scale",
+    "pencil case",
+    "beach towel",
+]
 # Varied load: English, Arabic and Arabizi, with and without parseable filters.
 LOAD_QUERIES = [
     "wireless earbuds",
@@ -214,6 +246,7 @@ class BurstStats:
     elapsed_s: float = 0.0
     statuses: Counter[int] = field(default_factory=Counter)
     degraded: Counter[str] = field(default_factory=Counter)
+    backend_503: int = 0  # 503 that is not an admission shed (e.g. "all retrievers failed")
     timeouts: int = 0
     transport_errors: int = 0
     client_dropped: int = 0
@@ -241,6 +274,8 @@ class BurstStats:
             f"503 shed: {self.shed:,}",
             f"timed out (>{BURST_REQUEST_TIMEOUT_S:g} s): {self.timeouts:,}",
         ]
+        if self.backend_503:
+            parts.append(f"503 backend: {self.backend_503:,}")
         if self.other:
             parts.append(f"other: {self.other:,}")
         if self.client_dropped:
@@ -271,6 +306,9 @@ async def _burst(url: str, rps: float, seconds: float, queries: Sequence[str]) -
                 return
             except httpx.HTTPError:
                 stats.transport_errors += 1
+                return
+            if r.status_code == 503 and b"search-overloaded" not in r.content:
+                stats.backend_503 += 1
                 return
             stats.statuses[r.status_code] += 1
             if r.status_code == 200 and (m := DEGRADED_RE.search(r.content)):
@@ -350,6 +388,12 @@ class CurlResult:
     def body(self) -> str:
         return self.output.partition("\n\n")[2]
 
+    @property
+    def is_shed(self) -> bool:
+        """An admission-control 503 (Retry-After present), not some other 503 such as a backend failure."""
+        head = self.output.partition("\n\n")[0].lower()
+        return self.status == 503 and "\nretry-after:" in head
+
 
 async def run_curl(args: list[str]) -> CurlResult:
     proc = await asyncio.create_subprocess_exec(
@@ -388,7 +432,7 @@ body { margin:0; width:1280px; height:800px; background:#0d1117; overflow:hidden
 .dots { position:absolute; left:14px; top:13px; display:flex; gap:10px; }
 .dots i { width:12px; height:12px; border-radius:50%; display:block; }
 pre { margin:0; padding:20px 22px; font:16px/23px Menlo,"SF Mono","DejaVu Sans Mono",monospace; color:#e6edf3;
-      white-space:pre-wrap; word-break:break-all; }
+      white-space:pre-wrap; overflow-wrap:anywhere; }
 .comment { color:#8b949e; } .cmd { color:#7ee787; } .bad { color:#ff7b72; } .ok { color:#3fb950; }
 .header { color:#c9d1d9; } .accent { color:#d2a8ff; }
 """
@@ -491,7 +535,9 @@ def _rank(state: dict[str, Any]) -> int:
     return 2 if not state["degraded"] and not state["error"] else (1 if not state["error"] else 0)
 
 
-async def submit_and_settle_clean(page: Any, rec: Recorder, label: str, out: Path, attempts: int = 6) -> dict:
+async def submit_and_settle_clean(
+    page: Any, rec: Recorder, label: str, out: Path, attempts: int = 10
+) -> dict[str, Any]:
     """Submit the search box and screenshot the result. If the live answer happens to be degraded or failed,
     wait out the gateway's 5 s degraded-response cache and reload (a real retry). The best real render is
     kept: clean, else degraded, else the error notice."""
@@ -514,6 +560,30 @@ async def submit_and_settle_clean(page: Any, rec: Recorder, label: str, out: Pat
     if best[0] < 2:
         rec.note(f"{label}: no clean render in {attempts} attempts; kept the best real one")
     return best[1]
+
+
+STAGES = {
+    "rerank": ("the reranker", "rerank_ms"),
+    "knn": ("kNN", "knn_ms"),
+    "bm25": ("BM25", "bm25_ms"),
+    "llm_parse": ("the LLM parser", "parse_llm_ms"),
+    "semantic_cache": ("the semantic cache", "semantic_cache_ms"),
+}
+
+
+def degraded_note(state: dict[str, Any]) -> str:
+    """Says why a happy-path frame still shows the degraded notice, instead of hiding it."""
+    reasons = state.get("degraded") or []
+    if not reasons:
+        return ""
+    parts = []
+    for reason in reasons:
+        name, key = STAGES.get(reason, (reason, ""))
+        budget = budget_value(key) if key else None
+        parts.append(f"{name} ({budget} ms budget)" if budget else name)
+    when = "with other heavy work running" if LOCK_DIR.exists() else "with no load test running"
+    verb = "were" if len(parts) > 1 else "was"
+    return f" The notice is real: {when}, {' and '.join(parts)} ran over budget here and {verb} skipped."
 
 
 # -- scenes --------------------------------------------------------------------------------------------------
@@ -566,7 +636,7 @@ async def scene_english(page: Any, rec: Recorder) -> None:
         2,
         "English query",
         f"The rule parser pulls the constraints out of the text ({filters}); "
-        f"only “{unparsed}” is left for BM25 + kNN retrieval. {state['count']}.",
+        f"only “{unparsed}” is left for BM25 + kNN retrieval. {state['count']}.{degraded_note(state)}",
     )
 
 
@@ -605,7 +675,7 @@ async def scene_arabic(page: Any, rec: Recorder) -> None:
         2500,
         3,
         "Arabic query",
-        f"{arabic_titles} of the {len(titles)} titles on this page are in Arabic{rest}",
+        f"{arabic_titles} of the {len(titles)} titles on this page are in Arabic{rest}{degraded_note(state)}",
     )
 
 
@@ -629,8 +699,8 @@ async def scene_arabizi(page: Any, rec: Recorder) -> None:
         4,
         "Arabizi query",
         f"Script: {interp.get('Script', '?')}, language: {interp.get('Detected language', '?')}. “sama3at” "
-        "(headphones; the digit 3 is the letter ain) is transliterated to Arabic script before BM25, kNN "
-        "and rerank.",
+        "(headphones; 3 is the letter ain) is transliterated to Arabic before BM25, kNN and rerank."
+        f"{degraded_note(state)}",
     )
 
 
@@ -757,8 +827,9 @@ async def scene_degrade(page: Any, rec: Recorder) -> BurstStats | None:
                 6,
                 "Failure 1: reranker skipped under load",
                 f"{stats.offered_rps:.0f} req/s of varied queries against services/search: "
-                f"{rr:,} of {stats.ok:,} "
-                f"answers skipped the over-budget reranker. “{used_q}” still returns results ({fused} of "
+                f"{rr:,} of {stats.ok:,} answers skipped the over-budget reranker"
+                + (f" ({stats.shed:,} more were shed)" if stats.shed else "")
+                + f". “{used_q}” still returns results ({fused} of "
                 f"{len(captured['rankSources'])} cards in fused order) plus a notice: degrade, don't fail.",
             )
             return stats
@@ -767,46 +838,69 @@ async def scene_degrade(page: Any, rec: Recorder) -> BurstStats | None:
     return None
 
 
+async def _curl_until_503(burst: BackgroundBurst, argv: Iterator[list[str]], label: str) -> CurlResult | None:
+    """Real curl calls during the burst until one is shed (503 + Retry-After), or the burst is nearly over."""
+    while burst.remaining_s() > 1.0:
+        args = next(argv, None)
+        if args is None:
+            return None
+        r = await run_curl(args)
+        log(f"storm: {label} curl -> {r.status}{' shed' if r.is_shed else ''}")
+        if r.is_shed and (label != "search" or "search-overloaded" in r.body):
+            return r
+        await asyncio.sleep(0.25)
+    return None
+
+
+async def _storefront_until_error(
+    page: Any, burst: BackgroundBurst, queries: Iterator[str], out: Path
+) -> str:
+    while burst.remaining_s() > 1.5:
+        q = next(queries, None)
+        if q is None:
+            return ""
+        await page.goto(f"{STOREFRONT}/en?{urlencode({'q': q})}", wait_until="networkidle")
+        await page.locator("main#results").wait_for()
+        state = await page_state(page)
+        log(f"storm: storefront q={q!r} error={state['error']!r} degraded={state['degraded']}")
+        if state["error"]:
+            await shot(page, out)
+            return q
+    return ""
+
+
 async def scene_storm(browser: Any, page: Any, rec: Recorder) -> BurstStats | None:
     limit = budget_value("max_inflight_per_worker") or "?"
-    for attempt, rps in enumerate((250, 300), start=1):
-        search_503: CurlResult | None = None
-        gateway_503: CurlResult | None = None
-        sf_query = ""
+    # Fresh queries per call: a gateway or storefront query answered once is cached by the gateway for 60 s.
+    gw_queries = iter(GATEWAY_STORM_QUERIES)
+    sf_queries = iter(STORM_QUERIES)
+    rates = (250, 200, 300)
+    for attempt, rps in enumerate(rates, start=1):
+        search_argv = (search_curl_args("wireless earbuds") for _ in range(60))
+        gateway_argv = (gateway_curl_args(q) for q in gw_queries)
         async with heavy_lock():
             burst = BackgroundBurst(rps=rps, seconds=10).start()
             try:
-                await asyncio.sleep(2.5)
-                for _ in range(30):
-                    r = await run_curl(search_curl_args("wireless earbuds"))
-                    if r.status == 503:
-                        search_503 = r
-                        break
-                    await asyncio.sleep(0.15)
-                for q in GATEWAY_STORM_QUERIES:
-                    if burst.remaining_s() < 3:
-                        break
-                    r = await run_curl(gateway_curl_args(q))
-                    log(f"storm: gateway q={q!r} -> {r.status}")
-                    if r.status == 503:
-                        gateway_503 = r
-                        break
-                    await asyncio.sleep(0.3)
-                for q in STORM_QUERIES:
-                    if burst.remaining_s() < 2:
-                        break
-                    await page.goto(f"{STOREFRONT}/en?{urlencode({'q': q})}", wait_until="networkidle")
-                    await page.locator("main#results").wait_for()
-                    state = await page_state(page)
-                    log(f"storm: storefront q={q!r} error={state['error']!r} degraded={state['degraded']}")
-                    if state["error"]:
-                        await shot(page, rec.path("s07_storefront_unavailable.png"))
-                        sf_query = q
-                        break
+                await asyncio.sleep(2.0)
+                search_503, gateway_503, sf_query = await asyncio.gather(
+                    _curl_until_503(burst, search_argv, "search"),
+                    _curl_until_503(burst, gateway_argv, "gateway"),
+                    _storefront_until_error(
+                        page, burst, sf_queries, rec.path("s07_storefront_unavailable.png")
+                    ),
+                )
             finally:
                 stats = await burst.join()
+        timeout_share = stats.timeouts / max(1, stats.sent)
         if search_503 is None:
-            rec.note(f"storm attempt {attempt}: no 503 captured at {rps} req/s")
+            rec.note(f"storm attempt {attempt} ({rps} req/s): no 503 captured; retrying")
+            continue
+        if timeout_share > 0.05 and attempt < len(rates):
+            rec.note(
+                f"storm attempt {attempt} ({rps} req/s): {stats.summary()}; "
+                "the service fell behind instead of "
+                "shedding cleanly, retrying"
+            )
             continue
 
         # Recovery: the burst is over, so the same request is answered normally again.
@@ -820,10 +914,7 @@ async def scene_storm(browser: Any, page: Any, rec: Recorder) -> BurstStats | No
 
         lines: list[tuple[str, str]] = [
             ("comment", f"# storm: {stats.offered_rps:.0f} req/s of varied queries -> POST {SEARCH}/search"),
-            (
-                "comment",
-                f"# admission control: more than {limit} in-flight /search per worker -> 503 at once",
-            ),
+            ("comment", f"# admission control: more than {limit} in-flight /search per worker -> 503"),
             ("cmd", f"$ {search_503.display}"),
             *http_lines(search_503),
         ]
@@ -835,26 +926,33 @@ async def scene_storm(browser: Any, page: Any, rec: Recorder) -> BurstStats | No
                 *http_lines(gateway_503),
             ]
         await render_terminal(browser, lines, rec.path("s07_terminal_503.png"), "curl during the burst")
-        rec.add(
-            "s07_terminal_503.png",
-            6000,
-            7,
-            "Failure 2: storm shed",
-            f"{stats.offered_rps:.0f} req/s is far above capacity. Instead of queueing until everything "
-            "times out, search refuses the excess at once: 503 problem+json with Retry-After: 1"
-            + (", forwarded by the gateway." if gateway_503 is not None else "."),
-        )
+        forwarded = ", forwarded by the gateway" if gateway_503 is not None else ""
+        if timeout_share <= 0.05:
+            caption = (
+                f"{stats.offered_rps:.0f} req/s is far above capacity. Instead of queueing until everything "
+                "times out, search refuses the excess at once: 503 problem+json with "
+                f"Retry-After: 1{forwarded}."
+            )
+        else:
+            caption = (
+                f"{stats.offered_rps:.0f} req/s is far above capacity: search refuses what it cannot take "
+                f"with 503 problem+json and Retry-After: 1{forwarded}; "
+                f"{stats.timeouts:,} requests still timed out."
+            )
+        rec.add("s07_terminal_503.png", 6000, 7, "Failure 2: storm shed", caption)
         if sf_query:
             rec.add(
                 "s07_storefront_unavailable.png",
                 3000,
                 7,
                 "Failure 2: storm shed",
-                f"The storefront during the burst (“{sf_query}”): the gateway's 503 becomes a "
-                "“try again in a moment” notice, not an error page.",
+                f"The storefront during the burst (“{sf_query}”): the failed search (a 503 from the gateway) "
+                "becomes a “try again in a moment” notice, not an error page.",
             )
         else:
             rec.note("storm: the storefront never rendered the unavailable notice during the burst")
+        if gateway_503 is None:
+            rec.note("storm: no gateway 503 captured during the burst")
 
         rec_body: dict[str, Any] = {}
         with suppress(ValueError):
@@ -869,16 +967,17 @@ async def scene_storm(browser: Any, page: Any, rec: Recorder) -> BurstStats | No
             total = rec_body.get("timings_ms", {}).get("total")
             took = f", {total:.0f} ms in search" if isinstance(total, int | float) else ""
             items = len(rec_body.get("items", []))
-            rlines.append(
-                ("comment", f"# {items} items, degraded: {json.dumps(rec_body.get('degraded'))}{took}")
-            )
+            degraded = json.dumps(rec_body.get("degraded"))
+            rlines.append(("comment", f"# {items} items, degraded: {degraded}{took}"))
         await render_terminal(browser, rlines, rec.path("s07_terminal_recovered.png"), "curl after the burst")
+        timed_out = f", {stats.timeouts:,} timed out (>3 s)" if stats.timeouts else ""
         rec.add(
             "s07_terminal_recovered.png",
             4500,
             7,
             "Failure 2: storm shed, then recovery",
-            f"The burst: {stats.sent:,} requests, {stats.shed:,} shed with 503, {stats.ok:,} answered. "
+            f"The burst: {stats.sent:,} requests, {stats.shed:,} shed with 503, "
+            f"{stats.ok:,} answered{timed_out}. "
             f"Two seconds after it ends the same search gets a normal {recovery.status} again.",
         )
         return stats
@@ -932,15 +1031,16 @@ async def scene_grafana(browser: Any, rec: Recorder) -> None:
         4500,
         8,
         "Observability: Grafana “Search SLO”",
-        "The last 15 minutes as Prometheus saw them: standard-path latency against the 250 ms SLO, "
-        "searches per second.",
+        "Last 15 minutes from Prometheus: standard-path latency against the 250 ms SLO and searches/s. "
+        "This recording's two bursts are the rightmost spikes; earlier load is other traffic on the stack.",
     )
     rec.add(
         "s08_grafana_degraded.png",
         5000,
         8,
         "Observability: degraded responses by reason",
-        "Both bursts by reason: rerank (and knn) skipped under load, shed for the storm's 503s.",
+        "Degraded responses by reason: rerank (and knn) skipped under load, shed for the storm's 503s "
+        "(rightmost spikes: this recording's bursts).",
     )
     if shed <= 0:
         rec.note("grafana: Prometheus showed no shed increase before the capture")
@@ -1016,6 +1116,21 @@ def font(kind: str, size: int) -> Any:
     return ImageFont.load_default(size)
 
 
+def wrap_text(d: Any, text: str, fnt: Any, width: float) -> list[str]:
+    lines: list[str] = []
+    cur = ""
+    for word in text.split():
+        trial = f"{cur} {word}".strip()
+        if d.textlength(trial, font=fnt) <= width:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 BAND_H = 104
 BRAND = (15, 107, 79)
 
@@ -1031,25 +1146,19 @@ def compose(frames_dir: Path, f: dict[str, Any]) -> Any:
     img.paste(shot_img, (0, 0))
     d = ImageDraw.Draw(img)
     d.rectangle([0, h, w, h + 3], fill=BRAND)
-    chip_font, title_font, body_font = font("bold", 20), font("bold", 24), font("sans", 19)
+    chip_font, title_font = font("bold", 20), font("bold", 24)
     chip = f"{f['scene']}/{TOTAL_SCENES}"
     cw = d.textlength(chip, font=chip_font) + 22
     d.rounded_rectangle([20, h + 16, 20 + cw, h + 46], radius=8, fill=BRAND)
     d.text((20 + cw / 2, h + 31), chip, font=chip_font, fill="white", anchor="mm")
     d.text((36 + cw, h + 31), f["title"], font=title_font, fill="white", anchor="lm")
-    lines: list[str] = []
-    cur = ""
-    for word in f["caption"].split():
-        trial = f"{cur} {word}".strip()
-        if d.textlength(trial, font=body_font) <= w - 40:
-            cur = trial
-        else:
-            lines.append(cur)
-            cur = word
-    if cur:
-        lines.append(cur)
-    if len(lines) > 2:
-        raise ValueError(f"caption for {f['file']} needs {len(lines)} lines (max 2): {f['caption']}")
+    for size in (19, 18, 17, 16, 15):
+        body_font = font("sans", size)
+        lines = wrap_text(d, f["caption"], body_font, w - 40)
+        if len(lines) <= 2:
+            break
+    else:
+        raise ValueError(f"caption for {f['file']} does not fit in two lines: {f['caption']}")
     for i, line in enumerate(lines):
         d.text((20, h + 56 + i * 24), line, font=body_font, fill=(214, 220, 226))
     return img
