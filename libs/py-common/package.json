@@ -1,0 +1,9 @@
+{
+  "name": "@souq/py-common",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src tests && uv run ruff format --check src tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-common pytest tests -m 'not integration and not live and not chaos'"
+  }
+}

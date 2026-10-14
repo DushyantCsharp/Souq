@@ -1,0 +1,81 @@
+{
+ "options": {
+  "summaryTrendStats": [
+   "med",
+   "p(95)",
+   "count"
+  ]
+ },
+ "state": {
+  "testRunDurationMs": 300000
+ },
+ "setup_data": {
+  "startedAt": "2026-10-14T05:52:19.824Z"
+ },
+ "metrics": {
+  "http_reqs": {
+   "type": "counter",
+   "values": {
+    "count": 45720,
+    "rate": 152.4
+   }
+  },
+  "http_req_failed": {
+   "type": "rate",
+   "values": {
+    "rate": 0.9994
+   },
+   "thresholds": {
+    "rate<0.01": {
+     "ok": false
+    }
+   }
+  },
+  "dropped_iterations": {
+   "type": "counter",
+   "values": {
+    "count": 9102,
+    "rate": 30.3
+   },
+   "thresholds": {
+    "rate<2": {
+     "ok": false
+    }
+   }
+  },
+  "search_latency_standard": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "med": 2977.0,
+    "p(95)": 4615.0,
+    "count": 38881
+   },
+   "thresholds": {
+    "p(95)<250": {
+     "ok": false
+    }
+   }
+  },
+  "search_latency_llm": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "med": 2963.0,
+    "p(95)": 4590.0,
+    "count": 7520
+   },
+   "thresholds": {
+    "p(95)<1200": {
+     "ok": false
+    }
+   }
+  },
+  "llm_path_share": {
+   "type": "rate",
+   "values": {
+    "rate": 0.0
+   }
+  }
+ }
+}

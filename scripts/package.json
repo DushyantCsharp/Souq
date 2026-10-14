@@ -1,0 +1,15 @@
+{
+  "name": "@souq/scripts",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src tests reindex.py backfill_size.py seed && uv run ruff format --check src tests reindex.py backfill_size.py seed",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-scripts pytest tests -m 'not integration and not live and not chaos'",
+    "test:integration": "uv run --package souq-scripts pytest tests -m integration",
+    "reindex:dry-run": "uv run --package souq-scripts python reindex.py --dry-run",
+    "templates:check": "uv run --package souq-scripts souq-templates --check"
+  },
+  "dependencies": {
+    "@souq/py-common": "workspace:*"
+  }
+}

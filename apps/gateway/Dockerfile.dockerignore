@@ -1,0 +1,27 @@
+# Whitelist for apps/gateway/Dockerfile (build context = repo root); BuildKit uses this instead of the
+# root .dockerignore. Every workspace package.json is kept so pnpm sees the same workspace the lockfile
+# describes; only the gateway's sources and the committed contract types come along.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!.npmrc
+!**/package.json
+!config/*.yaml
+!apps/gateway/**
+!packages/contracts/generated/**
+!packages/contracts/openapi.yaml
+!packages/contracts/schema.graphql
+apps/gateway/test/**
+apps/gateway/coverage/**
+apps/gateway/Dockerfile*
+# `/**` too: once `!**/package.json` forces a walk, a bare dir pattern no longer covers files inside.
+**/node_modules
+**/node_modules/**
+**/dist/**
+**/.turbo/**
+**/.next/**
+**/.venv/**
+data/**
+models/artifacts/**

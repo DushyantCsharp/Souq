@@ -1,0 +1,31 @@
+{
+  "name": "souq",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration --concurrency=1 && uv run pytest tests -m integration",
+    "test:chaos": "uv run pytest tests -m chaos",
+    "codegen": "turbo run codegen",
+    "check": "turbo run build lint typecheck test",
+    "bootstrap": "pnpm install && uv sync --all-packages",
+    "infra:up": "docker compose -p souq -f infra/compose.yaml up -d --wait",
+    "infra:obs": "docker compose -p souq -f infra/compose.yaml --profile obs --profile tools up -d",
+    "infra:apps": "docker compose -p souq -f infra/compose.yaml --profile apps up -d --build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "turbo": "^2.11.8",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.2"
+  }
+}

@@ -1,0 +1,89 @@
+# Alerts for Souq. Burn-rate alerts follow the multi-window, multi-burn-rate pattern (Google SRE workbook
+# ch. 5): a long window proves the burn is significant, a short window proves it is still happening, so
+# alerts fire fast and resolve fast. 14.4x over 1h burns 2% of a 30-day budget; 6x over 6h burns 5%.
+
+groups:
+  - name: souq-slo-alerts
+    rules:
+      - alert: SearchLatencyBudgetBurnFast
+        expr: slo:search_standard:burn_rate1h > 14.4 and slo:search_standard:burn_rate5m > 14.4
+        for: 2m
+        labels: { severity: page, slo: search-standard }
+        annotations:
+          summary: Standard search path is burning its p95<=250ms error budget >14.4x (1h & 5m windows)
+          description: >-
+            {{ $value | humanize }}x burn. Check the Search SLO dashboard stage breakdown and degraded
+            reasons; open a slow exemplar trace to see which stage exceeded its budget.
+          dashboard: http://localhost:3001/d/souq-search-slo
+      - alert: SearchLatencyBudgetBurnSlow
+        expr: slo:search_standard:burn_rate6h > 6 and slo:search_standard:burn_rate30m > 6
+        for: 15m
+        labels: { severity: ticket, slo: search-standard }
+        annotations:
+          summary: Standard search path is burning its p95<=250ms error budget >6x (6h & 30m windows)
+          dashboard: http://localhost:3001/d/souq-search-slo
+      - alert: LlmPathLatencyBudgetBurnFast
+        expr: slo:search_llm:burn_rate1h > 14.4 and slo:search_llm:burn_rate5m > 14.4
+        for: 2m
+        labels: { severity: page, slo: search-llm }
+        annotations:
+          summary: LLM search path is burning its p95<=1.2s error budget >14.4x (1h & 5m windows)
+          dashboard: http://localhost:3001/d/souq-search-slo
+      - alert: LlmPathLatencyBudgetBurnSlow
+        expr: slo:search_llm:burn_rate6h > 6 and slo:search_llm:burn_rate30m > 6
+        for: 15m
+        labels: { severity: ticket, slo: search-llm }
+        annotations:
+          summary: LLM search path is burning its p95<=1.2s error budget >6x (6h & 30m windows)
+          dashboard: http://localhost:3001/d/souq-search-slo
+
+  - name: souq-search-health
+    rules:
+      - alert: SearchDegradedRateHigh
+        expr: degraded_ratio > 0.10
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: More than 10% of searches are degraded ({{ $value | humanizePercentage }})
+          dashboard: http://localhost:3001/d/souq-search-slo
+
+  - name: souq-indexing-alerts
+    rules:
+      - alert: IndexFreshnessP95Breached
+        expr: index_freshness_seconds:p95_5m > 30
+        for: 10m
+        labels: { severity: page, slo: index-freshness }
+        annotations:
+          summary: p95 index freshness is {{ $value | humanizeDuration }} (target <= 30s)
+          description: >-
+            Changes are taking too long to become searchable. Check consumer lag, AIMD batch size and bulk
+            rejections on the Indexing dashboard.
+          dashboard: http://localhost:3001/d/souq-indexing
+      - alert: IndexFreshnessBudgetBurn
+        expr: slo:index_freshness:error_ratio_rate1h > 14.4 * 0.05 and slo:index_freshness:error_ratio_rate5m > 14.4 * 0.05
+        for: 2m
+        labels: { severity: page, slo: index-freshness }
+        annotations:
+          summary: Over 72% of catalog changes took longer than 30s to become searchable (1h & 5m windows)
+          dashboard: http://localhost:3001/d/souq-indexing
+      - alert: ConsumerLagHigh
+        expr: consumer_lag:total > 10000
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: Indexer is {{ $value | humanize }} messages behind on catalog.changes
+          dashboard: http://localhost:3001/d/souq-indexing
+      - alert: DeadLetterQueueNotEmpty
+        expr: max(dlq_depth) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $value }} messages are parked in catalog.dlq — inspect with the DLQ admin CLI"
+          dashboard: http://localhost:3001/d/souq-indexing
+      - alert: BulkRejectionsSustained
+        expr: sum(rate(bulk_rejections_total[5m])) > 1
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: OpenSearch is rejecting bulk requests ({{ $value | humanize }}/s) — AIMD is backing off
+          dashboard: http://localhost:3001/d/souq-indexing

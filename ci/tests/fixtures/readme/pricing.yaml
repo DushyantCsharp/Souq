@@ -1,0 +1,12 @@
+# Test copy of config/pricing.yaml (USD per million tokens, list prices as of 2026-10-06).
+currency: USD
+models:
+  claude-haiku-5-5:
+    input_per_mtok: 0.10
+    output_per_mtok: 0.50
+    long_context_threshold_tokens: 100000
+    long_context_input_per_mtok: 0.50
+    long_context_output_per_mtok: 2.50
+  claude-sonnet-5-5:
+    input_per_mtok: 2.00
+    output_per_mtok: 10.00

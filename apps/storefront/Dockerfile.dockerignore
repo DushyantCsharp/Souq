@@ -1,0 +1,25 @@
+# Whitelist for apps/storefront/Dockerfile (build context = repo root); BuildKit uses this instead of the
+# root .dockerignore. Every workspace package.json is kept so pnpm sees the same workspace the lockfile
+# describes.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!eslint.config.js
+!.npmrc
+!**/package.json
+!config/*.yaml
+!apps/storefront/**
+apps/storefront/__tests__/**
+apps/storefront/coverage/**
+apps/storefront/.next/**
+apps/storefront/Dockerfile*
+# `/**` too: once `!**/package.json` forces a walk, a bare dir pattern no longer covers files inside.
+**/node_modules
+**/node_modules/**
+**/.turbo/**
+**/.next/**
+**/.venv/**
+data/**
+models/artifacts/**

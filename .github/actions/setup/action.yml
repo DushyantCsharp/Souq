@@ -1,0 +1,56 @@
+name: Set up Souq toolchains
+description: >-
+  pnpm + Node 24 (pnpm store cached by setup-node) and/or uv + Python 3.12 (uv cache keyed on uv.lock),
+  then install the workspace. Shared by ci.yml and eval.yml so every job resolves identical toolchains.
+inputs:
+  node:
+    description: Install pnpm, Node and the pnpm workspace
+    default: "true"
+  python:
+    description: Install uv, Python and the uv workspace
+    default: "true"
+  pnpm-filter:
+    description: Optional pnpm --filter selector to install a subset (e.g. "@souq/db...")
+    default: ""
+  uv-sync-args:
+    description: Arguments for `uv sync` (always run with --locked so a stale uv.lock fails here)
+    default: "--all-packages"
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm (version from package.json packageManager)
+      if: inputs.node == 'true'
+      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+    - name: Set up Node
+      if: inputs.node == 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version: "24"
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+    - name: pnpm install
+      if: inputs.node == 'true'
+      shell: bash
+      env:
+        PNPM_FILTER: ${{ inputs.pnpm-filter }}
+      run: |
+        if [[ -n "$PNPM_FILTER" ]]; then
+          pnpm install --frozen-lockfile --filter "$PNPM_FILTER"
+        else
+          pnpm install --frozen-lockfile
+        fi
+    - name: Set up uv + Python
+      if: inputs.python == 'true'
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        version: "0.11.14"
+        python-version: "3.12"
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+    - name: uv sync
+      if: inputs.python == 'true'
+      shell: bash
+      env:
+        UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
+      # shellcheck disable=SC2086 # word-splitting the argument list is intended
+      run: uv sync --locked $UV_SYNC_ARGS

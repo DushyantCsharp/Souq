@@ -1,0 +1,63 @@
+{
+ "variants": {
+  "mmarco-mMiniLMv2-L12-H384-v1-int8@len128/t4/c8": {
+   "max_length": 128,
+   "chunk": 8,
+   "threads": 4,
+   "load_avg_1m": 28.5,
+   "size_mb": 119,
+   "latency": {
+    "30": {
+     "p50_ms": 194.4,
+     "p95_ms": 561.6,
+     "mean_pair_tokens": 42.8
+    }
+   },
+   "quality": {
+    "ndcg@10": 0.7981,
+    "n_queries": 100
+   }
+  },
+  "mmarco-mMiniLMv2-L12-H384-v1-int8@len128/t4/c8quiet": {
+   "max_length": 128,
+   "chunk": 8,
+   "threads": 4,
+   "load_avg_1m": 1.9,
+   "size_mb": 119,
+   "latency": {
+    "30": {
+     "p50_ms": 72.2,
+     "p95_ms": 105.1,
+     "mean_pair_tokens": 42.8
+    }
+   },
+   "quality": {
+    "ndcg@10": 0.7981,
+    "n_queries": 100
+   }
+  },
+  "bge-reranker-v2-m3-int8@len128/t4/c8quiet": {
+   "max_length": 128,
+   "chunk": 8,
+   "threads": 4,
+   "load_avg_1m": 2.9,
+   "size_mb": 572,
+   "latency": {
+    "30": {
+     "p50_ms": 537.1,
+     "p95_ms": 766.3,
+     "mean_pair_tokens": 42.8
+    }
+   },
+   "quality": {
+    "ndcg@10": 0.7981,
+    "n_queries": 100
+   }
+  }
+ },
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "ort_threads": 4
+ }
+}

@@ -1,0 +1,107 @@
+# Recording rules for Souq. Metric names come from the OTel instruments in souq_common.telemetry
+# (collector translation_strategy keeps them verbatim). Prometheus 3 normalises bucket labels to floats,
+# hence le="250.0" / le="1200.0" / le="30.0".
+#
+# SLOs (30-day window, see docs/perf-report.md):
+#   search standard path (path=standard|cache): 95% of searches <= 250 ms   → error budget 5%
+#   search LLM path      (path=llm):            95% of searches <= 1200 ms  → error budget 5%
+#   index freshness:                            95% of changes searchable <= 30 s
+# "Bad" events are searches slower than the threshold (latency SLO expressed as a ratio so it can burn).
+
+groups:
+  - name: souq-search-ratios
+    interval: 15s
+    rules:
+      # Names fixed by CLAUDE.md "Telemetry names": the ratios are rules over counters, not instruments.
+      - record: llm_path_ratio
+        expr: sum(rate(llm_path_total[5m])) / sum(rate(search_total[5m]))
+      - record: semantic_cache_hit_ratio
+        expr: sum(rate(semantic_cache_hits_total[5m])) / sum(rate(semantic_cache_lookups_total[5m]))
+      - record: zero_result_ratio
+        expr: sum(rate(zero_result_total[5m])) / sum(rate(search_total[5m]))
+      - record: degraded_ratio
+        expr: sum(rate(degraded_total[5m])) / sum(rate(search_total[5m]))
+
+  - name: souq-search-latency
+    interval: 15s
+    rules:
+      - record: path:search_latency:p95_5m
+        expr: histogram_quantile(0.95, sum by (le, path) (rate(search_latency_bucket[5m])))
+      - record: stage:stage_latency:p95_5m
+        expr: histogram_quantile(0.95, sum by (le, stage) (rate(stage_latency_bucket[5m])))
+
+  - name: souq-slo-search-standard
+    interval: 15s
+    rules:
+      - record: slo:search_standard:error_ratio_rate5m
+        expr: |
+          1 - sum(rate(search_latency_bucket{path=~"standard|cache", le="250.0"}[5m]))
+            / sum(rate(search_latency_count{path=~"standard|cache"}[5m]))
+      - record: slo:search_standard:error_ratio_rate30m
+        expr: |
+          1 - sum(rate(search_latency_bucket{path=~"standard|cache", le="250.0"}[30m]))
+            / sum(rate(search_latency_count{path=~"standard|cache"}[30m]))
+      - record: slo:search_standard:error_ratio_rate1h
+        expr: |
+          1 - sum(rate(search_latency_bucket{path=~"standard|cache", le="250.0"}[1h]))
+            / sum(rate(search_latency_count{path=~"standard|cache"}[1h]))
+      - record: slo:search_standard:error_ratio_rate6h
+        expr: |
+          1 - sum(rate(search_latency_bucket{path=~"standard|cache", le="250.0"}[6h]))
+            / sum(rate(search_latency_count{path=~"standard|cache"}[6h]))
+      # Burn rate = error ratio / error budget (0.05). 1 = budget exhausted exactly at the window's end.
+      - record: slo:search_standard:burn_rate5m
+        expr: slo:search_standard:error_ratio_rate5m / 0.05
+      - record: slo:search_standard:burn_rate30m
+        expr: slo:search_standard:error_ratio_rate30m / 0.05
+      - record: slo:search_standard:burn_rate1h
+        expr: slo:search_standard:error_ratio_rate1h / 0.05
+      - record: slo:search_standard:burn_rate6h
+        expr: slo:search_standard:error_ratio_rate6h / 0.05
+
+  - name: souq-slo-search-llm
+    interval: 15s
+    rules:
+      - record: slo:search_llm:error_ratio_rate5m
+        expr: |
+          1 - sum(rate(search_latency_bucket{path="llm", le="1200.0"}[5m]))
+            / sum(rate(search_latency_count{path="llm"}[5m]))
+      - record: slo:search_llm:error_ratio_rate30m
+        expr: |
+          1 - sum(rate(search_latency_bucket{path="llm", le="1200.0"}[30m]))
+            / sum(rate(search_latency_count{path="llm"}[30m]))
+      - record: slo:search_llm:error_ratio_rate1h
+        expr: |
+          1 - sum(rate(search_latency_bucket{path="llm", le="1200.0"}[1h]))
+            / sum(rate(search_latency_count{path="llm"}[1h]))
+      - record: slo:search_llm:error_ratio_rate6h
+        expr: |
+          1 - sum(rate(search_latency_bucket{path="llm", le="1200.0"}[6h]))
+            / sum(rate(search_latency_count{path="llm"}[6h]))
+      - record: slo:search_llm:burn_rate5m
+        expr: slo:search_llm:error_ratio_rate5m / 0.05
+      - record: slo:search_llm:burn_rate30m
+        expr: slo:search_llm:error_ratio_rate30m / 0.05
+      - record: slo:search_llm:burn_rate1h
+        expr: slo:search_llm:error_ratio_rate1h / 0.05
+      - record: slo:search_llm:burn_rate6h
+        expr: slo:search_llm:error_ratio_rate6h / 0.05
+
+  - name: souq-indexing
+    interval: 15s
+    rules:
+      - record: index_freshness_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(index_freshness_seconds_bucket[5m])))
+      - record: slo:index_freshness:error_ratio_rate5m
+        expr: |
+          1 - sum(rate(index_freshness_seconds_bucket{le="30.0"}[5m]))
+            / sum(rate(index_freshness_seconds_count[5m]))
+      - record: slo:index_freshness:error_ratio_rate1h
+        expr: |
+          1 - sum(rate(index_freshness_seconds_bucket{le="30.0"}[1h]))
+            / sum(rate(index_freshness_seconds_count[1h]))
+      # Several indexer replicas may report the same partition during a rebalance: take the max, not sum.
+      - record: partition:consumer_lag:max
+        expr: max by (topic, partition) (consumer_lag)
+      - record: consumer_lag:total
+        expr: sum(max by (topic, partition) (consumer_lag))

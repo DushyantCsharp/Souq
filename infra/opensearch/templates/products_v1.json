@@ -1,0 +1,242 @@
+{
+  "index_patterns": [
+    "products_v1"
+  ],
+  "priority": 200,
+  "version": 1,
+  "_meta": {
+    "description": "Souq products index, schema v1. Field contract: CLAUDE.md > Shared contracts > OpenSearch.",
+    "souq_char_filter_source": "souq_common.arabic.opensearch_char_filter_mappings()"
+  },
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "1s",
+        "knn": true,
+        "gc_deletes": "1h"
+      },
+      "analysis": {
+        "char_filter": {
+          "souq_arabic_norm": {
+            "type": "mapping",
+            "mappings": [
+              "\\u064B=>",
+              "\\u064C=>",
+              "\\u064D=>",
+              "\\u064E=>",
+              "\\u064F=>",
+              "\\u0650=>",
+              "\\u0651=>",
+              "\\u0652=>",
+              "\\u0670=>",
+              "\\u0640=>",
+              "\\u200C=>",
+              "\\u200D=>",
+              "\\u200E=>",
+              "\\u200F=>",
+              "\\u061C=>",
+              "\\u0623=>ا",
+              "\\u0625=>ا",
+              "\\u0622=>ا",
+              "\\u0671=>ا",
+              "\\u0649=>ي",
+              "\\u06CC=>ي",
+              "\\u06A9=>ك",
+              "\\u0629=>ه",
+              "\\u0624=>و",
+              "\\u0626=>ي",
+              "\\u0660=>0",
+              "\\u0661=>1",
+              "\\u0662=>2",
+              "\\u0663=>3",
+              "\\u0664=>4",
+              "\\u0665=>5",
+              "\\u0666=>6",
+              "\\u0667=>7",
+              "\\u0668=>8",
+              "\\u0669=>9",
+              "\\u06F0=>0",
+              "\\u06F1=>1",
+              "\\u06F2=>2",
+              "\\u06F3=>3",
+              "\\u06F4=>4",
+              "\\u06F5=>5",
+              "\\u06F6=>6",
+              "\\u06F7=>7",
+              "\\u06F8=>8",
+              "\\u06F9=>9",
+              "\\u066B=>.",
+              "\\u066C=>,"
+            ]
+          }
+        },
+        "filter": {
+          "souq_arabic_stop": {
+            "type": "stop",
+            "stopwords": "_arabic_"
+          },
+          "souq_arabic_stemmer": {
+            "type": "stemmer",
+            "language": "arabic"
+          },
+          "souq_english_possessive": {
+            "type": "stemmer",
+            "language": "possessive_english"
+          },
+          "souq_english_stop": {
+            "type": "stop",
+            "stopwords": "_english_"
+          },
+          "souq_english_stemmer": {
+            "type": "stemmer",
+            "language": "english"
+          }
+        },
+        "analyzer": {
+          "souq_arabic": {
+            "type": "custom",
+            "char_filter": [
+              "souq_arabic_norm"
+            ],
+            "tokenizer": "standard",
+            "filter": [
+              "lowercase",
+              "decimal_digit",
+              "souq_arabic_stop",
+              "arabic_normalization",
+              "souq_arabic_stemmer"
+            ]
+          },
+          "souq_english": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": [
+              "souq_english_possessive",
+              "lowercase",
+              "souq_english_stop",
+              "souq_english_stemmer"
+            ]
+          }
+        },
+        "normalizer": {
+          "souq_keyword_ar": {
+            "type": "custom",
+            "char_filter": [
+              "souq_arabic_norm"
+            ],
+            "filter": [
+              "lowercase"
+            ]
+          },
+          "souq_keyword_en": {
+            "type": "custom",
+            "filter": [
+              "lowercase",
+              "asciifolding"
+            ]
+          }
+        }
+      }
+    },
+    "mappings": {
+      "dynamic": false,
+      "_meta": {
+        "souq": {
+          "schema": "products_v1"
+        }
+      },
+      "_source": {
+        "excludes": [
+          "embedding"
+        ]
+      },
+      "properties": {
+        "sku": {
+          "type": "keyword"
+        },
+        "brand": {
+          "type": "text",
+          "fields": {
+            "kw": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "category_path": {
+          "type": "keyword"
+        },
+        "category_levels": {
+          "type": "keyword"
+        },
+        "price": {
+          "type": "scaled_float",
+          "scaling_factor": 100
+        },
+        "currency": {
+          "type": "keyword"
+        },
+        "colour": {
+          "type": "keyword"
+        },
+        "size": {
+          "type": "keyword"
+        },
+        "title_en": {
+          "type": "text",
+          "analyzer": "souq_english",
+          "fields": {
+            "raw": {
+              "type": "keyword",
+              "normalizer": "souq_keyword_en",
+              "ignore_above": 512
+            }
+          }
+        },
+        "description_en": {
+          "type": "text",
+          "analyzer": "souq_english"
+        },
+        "title_ar": {
+          "type": "text",
+          "analyzer": "souq_arabic",
+          "fields": {
+            "raw": {
+              "type": "keyword",
+              "normalizer": "souq_keyword_ar",
+              "ignore_above": 512
+            }
+          }
+        },
+        "description_ar": {
+          "type": "text",
+          "analyzer": "souq_arabic"
+        },
+        "attributes": {
+          "type": "flat_object"
+        },
+        "embedding": {
+          "type": "knn_vector",
+          "dimension": 1024,
+          "method": {
+            "name": "hnsw",
+            "engine": "lucene",
+            "space_type": "cosinesimil",
+            "parameters": {
+              "m": 16,
+              "ef_construction": 128
+            }
+          }
+        },
+        "updated_at": {
+          "type": "date"
+        },
+        "version": {
+          "type": "long"
+        }
+      }
+    }
+  }
+}

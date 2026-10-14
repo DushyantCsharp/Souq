@@ -1,0 +1,12 @@
+{
+  "name": "@souq/admin-sdk",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src tests && uv run ruff format --check src tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-admin-sdk pytest tests -m 'not integration and not live and not chaos'"
+  },
+  "devDependencies": {
+    "@souq/contracts": "workspace:*"
+  }
+}

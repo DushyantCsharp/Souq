@@ -1,0 +1,46 @@
+{
+  "n_queries": 115,
+  "n_docs": 1784,
+  "agreement_cosine": {
+    "queries_mean": 0.9883,
+    "queries_min": 0.9817,
+    "docs_mean": 0.9854,
+    "docs_min": 0.9761,
+    "extra_queries": {
+      "سماعات بلوتوث لاسلكية": 0.9851,
+      "حقيبة ظهر للابتوب": 0.9895,
+      "شاحن ايفون سريع": 0.9849,
+      "ساعة ذكية رياضية": 0.9915,
+      "كفر جوال سامسونج": 0.9817,
+      "حذاء رياضي رجالي": 0.9887,
+      "مكنسة كهربائية": 0.9848,
+      "طاولة قهوة خشب": 0.9897,
+      "sama3at bluetooth": 0.9907,
+      "shanta laptop": 0.9899,
+      "jazma riyadiya": 0.9869,
+      "جراب iphone 13": 0.9879,
+      "شاحن type c سريع": 0.9867,
+      "wireles headphnes": 0.9843,
+      "labtop bag 15 inch": 0.9885
+    }
+  },
+  "retrieval": {
+    "fp32_ndcg@10": 0.8032,
+    "int8_ndcg@10": 0.8058,
+    "top10_overlap": 0.954,
+    "n_queries": 100
+  },
+  "query_latency_ms": {
+    "fp32": {
+      "p50_ms": 1045.7,
+      "p95_ms": 5180.1
+    },
+    "int8": {
+      "p50_ms": 20.3,
+      "p95_ms": 58.9
+    }
+  },
+  "threads": 4,
+  "load_avg_1m": 30.4,
+  "encode_seconds_total": 269.1
+}

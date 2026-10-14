@@ -1,0 +1,33 @@
+[project]
+name = "souq-common"
+version = "0.1.0"
+description = "Shared settings, budgets, telemetry, Arabic normalisation and embeddings for Souq services"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "pyyaml>=6.0",
+  "numpy>=2.0",
+  "opentelemetry-api>=1.28",
+  # Telemetry (observability agent): SDK + OTLP/HTTP exporter + cheap auto-instrumentation.
+  # The instrumentors do not pull in their target libraries, so services only pay for what they use.
+  # Floors: exemplars, bucket advice, sync gauges and FastAPI exclude_spans are all relied on.
+  "opentelemetry-sdk>=1.39",
+  "opentelemetry-exporter-otlp-proto-http>=1.39",
+  "opentelemetry-instrumentation-fastapi>=0.60b0",
+  "opentelemetry-instrumentation-httpx>=0.60b0",
+  "opentelemetry-instrumentation-psycopg>=0.60b0",
+  "opentelemetry-instrumentation-redis>=0.60b0",
+  # Embeddings (search agent): bge-m3 ONNX served in-process by search, indexer and reindex.
+  "onnxruntime>=1.20",
+  "tokenizers>=0.20",
+  # Kafka producer settings shared by outbox-relay and indexer (workers agent): souq_common.kafka.
+  "confluent-kafka>=2.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/souq_common"]

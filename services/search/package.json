@@ -1,0 +1,16 @@
+{
+  "name": "@souq/search",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src tests scripts && uv run ruff format --check src tests scripts",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-search pytest tests -m 'not integration and not live and not chaos'",
+    "test:integration": "uv run --package souq-search pytest tests -m integration",
+    "openapi": "uv run --package souq-search python scripts/export_openapi.py",
+    "start": "uv run --package souq-search souq-search",
+    "codegen": "uv run --package souq-search python scripts/export_openapi.py"
+  },
+  "dependencies": {
+    "@souq/py-common": "workspace:*"
+  }
+}

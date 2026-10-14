@@ -1,0 +1,63 @@
+# The storefront's only operation. Codegen (packages/contracts) reads this file and emits typed documents into
+# src/gql/. Fields are inlined rather than shared via fragments so the generated types stay unmasked.
+query StorefrontSearch($input: SearchInput!, $first: Int!, $after: String) {
+  search(input: $input, first: $first, after: $after) {
+    totalEstimate
+    degraded
+    edges {
+      cursor
+      node {
+        sku
+        title
+        description
+        brand
+        price {
+          amount
+          currency
+        }
+        categoryPath
+        colour
+        size
+        rankSource
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    facets {
+      name
+      buckets {
+        value
+        count
+      }
+    }
+    appliedFilters {
+      priceMin
+      priceMax
+      currency
+      brands
+      colours
+      sizes
+      category
+    }
+    interpretation {
+      original
+      normalised
+      detectedLang
+      script
+      rewritten
+      parser
+      unparsedTokens
+      filters {
+        priceMin
+        priceMax
+        currency
+        brands
+        colours
+        sizes
+        category
+      }
+    }
+  }
+}

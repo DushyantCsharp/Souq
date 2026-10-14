@@ -1,0 +1,125 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "souq-feeds (provisional)",
+    "version": "0.0.0-provisional",
+    "description": "Hand-written from the CLAUDE.md feeds internal contract. Codegen prefers feeds-internal/openapi.json (exported from FastAPI by services/feeds) whenever it exists."
+  },
+  "paths": {
+    "/feeds": {
+      "post": {
+        "operationId": "upload_feed",
+        "requestBody": {
+          "required": true,
+          "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/FeedUpload"}}}
+        },
+        "responses": {
+          "202": {"description": "Accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedAccepted"}}}},
+          "413": {"description": "Too large", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorDetail"}}}},
+          "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}
+        }
+      }
+    },
+    "/feeds/{id}": {
+      "get": {
+        "operationId": "get_feed",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "Status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedStatus"}}}},
+          "404": {"description": "Not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorDetail"}}}}
+        }
+      }
+    },
+    "/feeds/{id}/errors": {
+      "get": {
+        "operationId": "list_feed_errors",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "cursor", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}}
+        ],
+        "responses": {
+          "200": {"description": "Errors page", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedErrorPage"}}}},
+          "404": {"description": "Not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorDetail"}}}}
+        }
+      }
+    },
+    "/healthz": {
+      "get": {"operationId": "healthz", "responses": {"200": {"description": "Alive", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}}}}
+    },
+    "/readyz": {
+      "get": {"operationId": "readyz", "responses": {"200": {"description": "Ready", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}}}}
+    }
+  },
+  "components": {
+    "schemas": {
+      "FeedUpload": {
+        "type": "object",
+        "required": ["file", "format"],
+        "properties": {
+          "file": {"type": "string", "format": "binary"},
+          "format": {"type": "string", "enum": ["csv", "jsonl"]}
+        }
+      },
+      "FeedAccepted": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"type": "string", "enum": ["queued", "running", "completed", "failed"]}
+        }
+      },
+      "FeedStatus": {
+        "type": "object",
+        "required": ["id", "status", "rows_total", "rows_ok", "rows_rejected", "error_counts"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"type": "string", "enum": ["queued", "running", "completed", "failed"]},
+          "rows_total": {"type": "integer"},
+          "rows_ok": {"type": "integer"},
+          "rows_rejected": {"type": "integer"},
+          "error_counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+          "started_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+          "finished_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+          "failure_reason": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        }
+      },
+      "FeedRowError": {
+        "type": "object",
+        "required": ["row_number", "code", "message"],
+        "properties": {
+          "row_number": {"type": "integer"},
+          "code": {"type": "string"},
+          "field": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "message": {"type": "string"},
+          "raw": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        }
+      },
+      "FeedErrorPage": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/FeedRowError"}},
+          "next_cursor": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "properties": {"detail": {}}
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "properties": {
+          "loc": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+          "msg": {"type": "string"},
+          "type": {"type": "string"}
+        }
+      },
+      "HTTPValidationError": {
+        "type": "object",
+        "properties": {"detail": {"type": "array", "items": {"$ref": "#/components/schemas/ValidationError"}}}
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@souq/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public OpenAPI + GraphQL contracts, internal service specs, codegen and drift check",
+  "exports": {
+    "./openapi.yaml": "./openapi.yaml",
+    "./schema.graphql": "./schema.graphql",
+    "./public-api": {
+      "types": "./generated/public-api.d.ts"
+    },
+    "./search-internal": {
+      "types": "./generated/search-internal.d.ts"
+    },
+    "./feeds-internal": {
+      "types": "./generated/feeds-internal.d.ts"
+    }
+  },
+  "scripts": {
+    "codegen": "node scripts/codegen.ts",
+    "build": "node scripts/validate.ts",
+    "lint": "eslint . && node scripts/validate.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "drift-check": "node scripts/check-drift.ts",
+    "check-drift": "node scripts/check-drift.ts"
+  },
+  "devDependencies": {
+    "@graphql-codegen/add": "^7.1.1",
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/client-preset": "^6.2.3",
+    "@graphql-codegen/typescript": "^6.1.2",
+    "@graphql-codegen/typescript-resolvers": "^6.1.1",
+    "@redocly/openapi-core": "^1.34.6",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.12.0",
+    "graphql": "^16.14.2",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "yaml": "^2.9.1"
+  }
+}

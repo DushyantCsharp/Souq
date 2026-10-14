@@ -1,0 +1,42 @@
+# Grafana Tempo, single binary, local disk. Sized for a laptop: small blocks, 48 h retention.
+# Receives OTLP gRPC from the collector only (not exposed on the host — host 4317 is the collector).
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  trace_idle_period: 10s
+  max_block_duration: 5m
+  max_block_bytes: 50_000_000
+
+compactor:
+  compaction:
+    block_retention: 48h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    ingestion:
+      rate_limit_bytes: 15_000_000
+      burst_size_bytes: 20_000_000
+      max_traces_per_user: 50000
+
+usage_report:
+  reporting_enabled: false

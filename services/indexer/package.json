@@ -1,0 +1,15 @@
+{
+  "name": "@souq/indexer",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src tests && uv run ruff format --check src tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-indexer pytest tests -m 'not integration and not live and not chaos'",
+    "test:integration": "uv run --package souq-indexer pytest tests -m integration",
+    "start": "uv run --package souq-indexer souq-indexer",
+    "dlq": "uv run --package souq-indexer souq-dlq"
+  },
+  "dependencies": {
+    "@souq/py-common": "workspace:*"
+  }
+}

@@ -1,0 +1,27 @@
+# Prometheus for the local Souq stack (host port 9091; 9090 belongs to another stack on the dev machine).
+global:
+  scrape_interval: 10s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Application metrics, translated from OTLP by the collector's Prometheus exporter.
+  - job_name: otel-collector
+    # Keep job/instance derived from the OTel resource (job="souq/search", instance=<service.instance.id>)
+    # rather than overwriting them with this scrape job's name.
+    honor_labels: true
+    # OpenMetrics first: it is the only text format that carries exemplars.
+    scrape_protocols: [OpenMetricsText1.0.0, PrometheusProto, PrometheusText0.0.4]
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  # Collector self-telemetry (accepted/refused/dropped spans, sampling decisions, memory limiter).
+  - job_name: otel-collector-self
+    static_configs:
+      - targets: ["otel-collector:8888"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]

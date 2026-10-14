@@ -1,0 +1,705 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Souq search (internal)",
+    "description": "Internal search API. Owns normalisation, parsing, retrieval, fusion, reranking and pagination. The cursor is opaque to callers.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/search": {
+      "post": {
+        "summary": "Search",
+        "operationId": "search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Search backend unavailable",
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Healthz",
+        "description": "Liveness: the process is up. Dependency-free on purpose.",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readyz",
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Cursor": {
+        "properties": {
+          "query_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Query Key"
+          },
+          "pit_id": {
+            "type": "string",
+            "maxLength": 4096,
+            "title": "Pit Id"
+          },
+          "window_pos": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Window Pos"
+          },
+          "search_after": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query_key",
+          "pit_id",
+          "window_pos"
+        ],
+        "title": "Cursor",
+        "description": "Opaque to the gateway. ``query_key`` names the pagination session (services/search/README.md)."
+      },
+      "Facet": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/FacetBucket"
+            },
+            "type": "array",
+            "title": "Buckets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "buckets"
+        ],
+        "title": "Facet"
+      },
+      "FacetBucket": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "FacetBucket"
+      },
+      "Filters": {
+        "properties": {
+          "price_min": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Min"
+          },
+          "price_max": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Max"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "brands": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brands"
+          },
+          "colours": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colours"
+          },
+          "sizes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizes"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Filters"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "unavailable"
+            ],
+            "title": "Status"
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "ParsedQuery": {
+        "properties": {
+          "original": {
+            "type": "string",
+            "title": "Original"
+          },
+          "normalised": {
+            "type": "string",
+            "title": "Normalised"
+          },
+          "detected_lang": {
+            "type": "string",
+            "enum": [
+              "en",
+              "ar"
+            ],
+            "title": "Detected Lang"
+          },
+          "script": {
+            "type": "string",
+            "enum": [
+              "ar",
+              "en",
+              "mixed",
+              "arabizi"
+            ],
+            "title": "Script"
+          },
+          "rewritten": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewritten"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "parser": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "llm",
+              "cache"
+            ],
+            "title": "Parser"
+          },
+          "unparsed_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unparsed Tokens"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original",
+          "normalised",
+          "detected_lang",
+          "script",
+          "filters",
+          "parser",
+          "unparsed_tokens"
+        ],
+        "title": "ParsedQuery"
+      },
+      "Price": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "Price"
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status"
+        ],
+        "title": "Problem",
+        "description": "RFC 9457 problem+json."
+      },
+      "SearchItem": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "brand": {
+            "type": "string",
+            "title": "Brand"
+          },
+          "price": {
+            "$ref": "#/components/schemas/Price"
+          },
+          "category_path": {
+            "type": "string",
+            "title": "Category Path"
+          },
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "rank_source": {
+            "type": "string",
+            "enum": [
+              "rerank",
+              "fused",
+              "lexical_tail"
+            ],
+            "title": "Rank Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "title",
+          "brand",
+          "price",
+          "category_path",
+          "score",
+          "rank_source"
+        ],
+        "title": "SearchItem"
+      },
+      "SearchOptions": {
+        "properties": {
+          "llm": {
+            "type": "boolean",
+            "title": "Llm",
+            "default": true
+          },
+          "rerank": {
+            "type": "boolean",
+            "title": "Rerank",
+            "default": true
+          },
+          "debug": {
+            "type": "boolean",
+            "title": "Debug",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SearchOptions"
+      },
+      "SearchRequest": {
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Q"
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "en",
+              "ar",
+              "auto"
+            ],
+            "title": "Lang",
+            "default": "auto"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Filters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 24
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "q"
+        ],
+        "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/Facet"
+            },
+            "type": "array",
+            "title": "Facets"
+          },
+          "applied_filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "parsed_query": {
+            "$ref": "#/components/schemas/ParsedQuery"
+          },
+          "degraded": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "rerank",
+                "llm_parse",
+                "knn",
+                "bm25",
+                "semantic_cache"
+              ]
+            },
+            "type": "array",
+            "title": "Degraded"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_estimate": {
+            "type": "integer",
+            "title": "Total Estimate"
+          },
+          "timings_ms": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Timings Ms"
+          },
+          "debug": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "facets",
+          "applied_filters",
+          "parsed_query",
+          "degraded",
+          "total_estimate",
+          "timings_ms"
+        ],
+        "title": "SearchResponse"
+      }
+    }
+  }
+}

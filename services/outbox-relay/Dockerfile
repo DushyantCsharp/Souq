@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+# souq-outbox-relay: polls the Postgres outbox (FOR UPDATE SKIP LOCKED) -> Redpanda catalog.changes.
+# Build context is the repo root:  docker buildx bake outbox-relay   (or)
+#   docker build -f services/outbox-relay/Dockerfile .
+# services/outbox-relay/Dockerfile.dockerignore whitelists the files this image needs; BuildKit prefers it over
+# the root .dockerignore, so edits elsewhere in the monorepo do not invalidate these layers.
+
+ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.11.14
+
+FROM ghcr.io/astral-sh/uv:${UV_VERSION}-python${PYTHON_VERSION}-trixie-slim AS builder
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+WORKDIR /src
+# Third-party deps only; reused until uv.lock or a manifest changes. --frozen (not --locked) because only
+# this member's slice of the workspace is in the context, so uv cannot re-validate the whole lock here
+# (CI's `uv sync --locked` does that).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=libs/py-common/pyproject.toml,target=libs/py-common/pyproject.toml \
+    --mount=type=bind,source=services/outbox-relay/pyproject.toml,target=services/outbox-relay/pyproject.toml \
+    uv sync --frozen --no-dev --no-install-workspace --package souq-outbox-relay
+COPY pyproject.toml uv.lock ./
+COPY libs/py-common libs/py-common
+COPY services/outbox-relay services/outbox-relay
+# Workspace members stay editable (a .pth pointing at /src/...): the venv layer then depends only on
+# manifests, and a code-only release ships just the small source layer below instead of the whole venv.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --package souq-outbox-relay \
+ && python -m compileall -q -j0 libs/py-common/src services/outbox-relay/src
+
+FROM python:${PYTHON_VERSION}-slim-trixie AS runtime
+# pip is unused at runtime and is the most common source of fixable CVEs in the base image.
+RUN python -m pip uninstall --yes --quiet pip \
+ && groupadd --system --gid 10001 souq \
+ && useradd --system --uid 10001 --gid souq --home-dir /nonexistent --shell /usr/sbin/nologin souq
+COPY --from=builder /opt/venv /opt/venv
+COPY config /app/config
+COPY --from=builder /src/libs/py-common/src /src/libs/py-common/src
+COPY --from=builder /src/services/outbox-relay/src /src/services/outbox-relay/src
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    SOUQ_CONFIG_DIR=/app/config \
+    RELAY_HEALTH_PORT=8004
+WORKDIR /app
+# Numeric uid so Kubernetes runAsNonRoot can verify it without resolving /etc/passwd.
+USER 10001:10001
+EXPOSE 8004
+# Liveness from the health side-car (poll loop alive); readiness is /readyz.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+    CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('RELAY_HEALTH_PORT', '8004'), timeout=2)"]
+ENTRYPOINT ["souq-outbox-relay"]

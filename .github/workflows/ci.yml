@@ -1,0 +1,300 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Superseded PR pushes are worthless; main runs always finish so every merge commit has a result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+  # Deterministic, offline defaults for every test step (CLAUDE.md rule 7): recorded LLM fixtures, fake
+  # embedder, no OTLP exporter.
+  SOUQ_LLM_MODE: replay
+  SOUQ_EMBEDDER: fake
+  OTEL_SDK_DISABLED: "true"
+
+jobs:
+  checks:
+    name: ${{ matrix.toolchain }} · lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Both legs install both toolchains: turbo (a Node binary) orchestrates the Python members via
+          # their package.json scripts, and contracts codegen shells out to Python. The legs split the
+          # *packages* each one runs, so a Python-only PR leaves the node leg with nothing to do.
+          - toolchain: node
+            scopes: "./apps/* ./packages/*"
+          - toolchain: python
+            scopes: "./libs/* ./services/* ./evals ./models ./scripts"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # turbo's [origin/<base>] filter needs the base branch history
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: turbo lint typecheck test (affected packages on PRs)
+        env:
+          SCOPES: ${{ matrix.scopes }}
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          filters=()
+          for scope in $SCOPES; do
+            if [[ "$EVENT" == pull_request ]]; then
+              # Changed packages in this scope plus everything that depends on them.
+              filters+=("--filter=...{${scope}}[origin/${BASE_REF}]")
+            else
+              filters+=("--filter=${scope}")
+            fi
+          done
+          pnpm turbo run lint typecheck test "${filters[@]}" --continue
+
+  ci-tooling:
+    name: ci scripts, workflows, shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Full uv sync, not just the dev group: the root mypy config loads the pydantic.mypy plugin.
+      - uses: ./.github/actions/setup
+        with:
+          node: "false"
+      - name: ruff + mypy + pytest on ci/
+        run: |
+          uv run --frozen ruff check ci
+          uv run --frozen ruff format --check ci
+          uv run --frozen mypy ci
+          uv run --frozen pytest ci/tests -q
+      - name: actionlint (includes shellcheck of run blocks)
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+      - name: shellcheck ci/*.sh
+        run: shellcheck ci/*.sh
+
+  integration:
+    name: integration tests (service containers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: souq
+          POSTGRES_PASSWORD: souq
+          POSTGRES_DB: souq
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U souq -d souq"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+      opensearch:
+        image: opensearchproject/opensearch:2.19.1
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+          bootstrap.memory_lock: "false"
+          thread_pool.write.queue_size: "200"
+        ports: ["9200:9200"]
+        options: >-
+          --ulimit nofile=65536:65536
+          --health-cmd "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow || exit 1"
+          --health-interval 5s --health-timeout 5s --health-retries 60
+      redis:
+        image: redis/redis-stack-server:7.4.0-v3
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      SOUQ_TEST_USE_EXTERNAL_SERVICES: "1"
+      DATABASE_URL: postgres://souq:souq@localhost:5432/souq
+      KAFKA_BOOTSTRAP: localhost:19092
+      OPENSEARCH_URL: http://localhost:9200
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Service containers cannot take a command line, and Redpanda needs one (listeners, --smp, --memory),
+      # so it runs as a plain container with the same flags as infra/compose.yaml.
+      - name: Start Redpanda
+        run: |
+          docker run -d --name redpanda --hostname redpanda \
+            -p 19092:19092 -p 9644:9644 -v "$PWD/infra/redpanda:/init:ro" \
+            redpandadata/redpanda:v24.3.7 redpanda start --mode=dev-container --smp=1 --memory=1G \
+            --overprovisioned \
+            --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092 \
+            --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - uses: ./.github/actions/setup
+      - name: Wait for Redpanda and create topics (infra/redpanda/topics.sh)
+        run: |
+          for _ in $(seq 60); do
+            docker exec redpanda rpk cluster health | grep -Eq 'Healthy:.+true' && break
+            sleep 2
+          done
+          docker exec redpanda bash /init/topics.sh
+      - name: Apply migrations
+        run: pnpm --filter @souq/db run migrate up
+      - name: pytest -m integration
+        run: >-
+          uv run --frozen pytest -m "integration and not chaos and not live"
+          --junitxml=reports/integration.xml -o junit_family=xunit2
+      - name: Redpanda logs
+        if: failure()
+        run: docker logs --tail 200 redpanda
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: integration-junit
+          path: reports/integration.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  dry-runs:
+    name: migration round-trip + reindex dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: souq
+          POSTGRES_PASSWORD: souq
+          POSTGRES_DB: souq
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U souq -d souq"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+      opensearch:
+        image: opensearchproject/opensearch:2.19.1
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+        ports: ["9200:9200"]
+        options: >-
+          --ulimit nofile=65536:65536
+          --health-cmd "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow || exit 1"
+          --health-interval 5s --health-timeout 5s --health-retries 60
+    env:
+      DATABASE_URL: postgres://souq:souq@localhost:5432/souq
+      OPENSEARCH_URL: http://localhost:9200
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          pnpm-filter: "@souq/db..."
+      # The server container's own pg_dump: the runner's client may be older than the server.
+      - name: Migration round-trip (up -> down all -> up, schema diffed) + contract step rollback
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+          NEXT_CYCLE: "1"
+        run: PG_DUMP="docker exec $PG_CONTAINER pg_dump -U souq -d souq" ci/migrations_roundtrip.sh
+      - name: Full round-trip including staged contract migrations (migrations-next/)
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$PG_CONTAINER" psql -U souq -d souq -qc "CREATE DATABASE souq_next"
+          DATABASE_URL=postgres://souq:souq@localhost:5432/souq_next \
+          PG_DUMP="docker exec $PG_CONTAINER pg_dump -U souq -d souq_next" \
+            ci/migrations_roundtrip.sh --include-next
+      - name: Index templates mirror souq_common.arabic and the field contract
+        run: uv run --frozen --package souq-scripts souq-templates --check
+      # Read-only: validates both templates and prints the plan (--init v1 on this empty cluster).
+      - name: Reindex dry-run
+        run: uv run --frozen --package souq-scripts python scripts/reindex.py --dry-run
+
+  contract-drift:
+    name: contract drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Needs Node + uv + the synced workspace venv (it runs openapi-python-client via uvx and ruff).
+      - name: Regenerate contracts and diff against the committed output
+        run: pnpm --filter @souq/contracts run drift-check
+
+  docker:
+    name: Dockerfiles (lint, bake check, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Did anything that feeds an image change?
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ "$EVENT" != pull_request ]]; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if git diff --name-only "origin/${BASE_REF}...HEAD" \
+              | grep -Eq '^(apps/|services/|libs/py-common/|packages/contracts/|config/|pyproject\.toml|uv\.lock|package\.json|pnpm-(lock|workspace)\.yaml|tsconfig\.base\.json|docker-bake\.hcl|\.dockerignore)'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: hadolint
+        run: |
+          status=0
+          for f in apps/*/Dockerfile services/*/Dockerfile; do
+            echo "== $f"
+            docker run --rm -i hadolint/hadolint:v2.15.1 hadolint --failure-threshold warning - < "$f" || status=1
+          done
+          exit "$status"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: bake definition parses
+        run: docker buildx bake --print > /dev/null
+      - name: BuildKit build checks (no build)
+        run: docker buildx bake --call check
+      - name: Build all images (linux/amd64, not pushed)
+        if: steps.changes.outputs.build == 'true'
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
+        with:
+          source: .
+          files: ./docker-bake.hcl
+          push: false
+          set: |
+            *.platform=linux/amd64
+            *.cache-from=type=gha,scope=ci-images
+            *.cache-to=type=gha,mode=max,scope=ci-images
+
+  # Single required status check for branch protection: skipped jobs count as success, failures don't.
+  ci-ok:
+    name: ci ok
+    if: always()
+    needs: [checks, ci-tooling, integration, dry-runs, contract-drift, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All required jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            if [[ "$r" != success && "$r" != skipped ]]; then exit 1; fi
+          done

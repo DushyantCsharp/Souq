@@ -1,0 +1,11 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "codegen": {
+      "dependsOn": ["^codegen", "@souq/feeds#codegen", "@souq/search#codegen"],
+      "cache": false
+    },
+    "build": { "dependsOn": ["codegen"], "outputs": [] }
+  }
+}

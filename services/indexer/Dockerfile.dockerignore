@@ -1,0 +1,14 @@
+# Whitelist for services/indexer/Dockerfile (build context = repo root). BuildKit uses this file instead
+# of the root .dockerignore for this Dockerfile.
+*
+!pyproject.toml
+!uv.lock
+!config/*.yaml
+!libs/py-common/pyproject.toml
+!libs/py-common/README*
+!libs/py-common/src/**
+!services/indexer/pyproject.toml
+!services/indexer/README*
+!services/indexer/src/**
+**/__pycache__/**
+**/*.pyc

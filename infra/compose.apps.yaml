@@ -1,0 +1,187 @@
+# Profile "apps": the Souq services themselves, built from each package's Dockerfile (owned by cicd).
+#   docker compose -p souq -f infra/compose.yaml --profile apps up -d --build --wait
+# Prerequisites: core stack up, migrations applied and OpenSearch indices/aliases created (README quickstart).
+# Paths here are relative to infra/, so `..` is the repo root; every image builds with the repo root as context
+# (each Dockerfile has a Dockerfile.dockerignore whitelist beside it).
+#
+# Images bake SOUQ_CONFIG_DIR=/app/config; the repo config/ is mounted over it so budget changes need only a
+# restart, not a rebuild. Models are not baked into dev images; models/artifacts is mounted at /app/models.
+# The OTLP endpoint is the collector from the "obs" profile. Nothing depends on it: without obs the exporters
+# fail quietly and the apps still serve traffic.
+
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+  # Shared key for hash_query(): without it each process picks a random key and query hashes from the
+  # gateway and search would not correlate.
+  SOUQ_TELEMETRY_SALT: ${SOUQ_TELEMETRY_SALT:-dev-only-telemetry-salt}
+
+x-model-env: &model-env
+  SOUQ_EMBEDDER: ${SOUQ_EMBEDDER:-fake}
+  SOUQ_EMBEDDER_MODEL: /app/models/bge-m3-int8
+  SOUQ_RERANKER_MODEL: /app/models/reranker-int8
+
+x-app: &app
+  profiles: [apps]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+# Faster than the images' own HEALTHCHECK (15 s interval) so `up --wait` returns promptly. Same endpoints:
+# liveness only, so a missing index or a down dependency degrades responses instead of blocking startup.
+x-health: &health
+  interval: 5s
+  timeout: 3s
+  retries: 30
+  start_period: 20s
+
+services:
+  search:
+    <<: *app
+    build: { context: .., dockerfile: services/search/Dockerfile }
+    image: souq/search:dev
+    ports: ["8001:8001"]
+    environment:
+      <<: [*otel-env, *model-env]
+      OTEL_SERVICE_NAME: search
+      # One event loop saturates near ~100 RPS; scale out with processes and keep
+      # workers x ORT threads <= cores, or the ONNX thread pools fight each other.
+      WEB_CONCURRENCY: ${SEARCH_WORKERS:-1}
+      SOUQ_ORT_THREADS: ${SEARCH_ORT_THREADS:-4}
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_URL: redis://redis:6379/0
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SOUQ_LLM_MODE: ${SOUQ_LLM_MODE:-replay}
+      SOUQ_LLM_MODEL: ${SOUQ_LLM_MODEL:-claude-haiku-5-5}
+      # Replay fixtures at the same relative path as in the repo (WORKDIR is /app).
+      SOUQ_LLM_FIXTURES_DIR: /app/tests/fixtures/llm
+    volumes:
+      - ../config:/app/config:ro
+      - ../models/artifacts:/app/models:ro
+      - ../tests/fixtures/llm:/app/tests/fixtures/llm:ro
+    depends_on:
+      opensearch: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=2)"]
+    deploy:
+      resources:
+        # Per worker: bge-m3 int8 (566 MB) + reranker int8 (119 MB) + ORT arenas; 1g OOM-kills one worker.
+        limits: { memory: "${SEARCH_MEM_LIMIT:-2g}" }
+
+  feeds:
+    <<: *app
+    build: { context: .., dockerfile: services/feeds/Dockerfile }
+    image: souq/feeds:dev
+    ports: ["8002:8002"]
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: feeds
+      DATABASE_URL: postgres://souq:souq@postgres:5432/souq
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/healthz', timeout=2)"]
+    deploy:
+      resources:
+        limits: { memory: 384m }
+
+  indexer:
+    <<: *app
+    build: { context: .., dockerfile: services/indexer/Dockerfile }
+    image: souq/indexer:dev
+    environment:
+      <<: [*otel-env, *model-env]
+      OTEL_SERVICE_NAME: indexer
+      KAFKA_BOOTSTRAP: redpanda:9092
+      OPENSEARCH_URL: http://opensearch:9200
+    volumes:
+      - ../config:/app/config:ro
+      - ../models/artifacts:/app/models:ro
+    depends_on:
+      redpanda: { condition: service_healthy }
+      redpanda-init: { condition: service_completed_successfully }
+      opensearch: { condition: service_healthy }
+    # No HTTP server: the image HEALTHCHECK checks the consume-loop heartbeat file (SOUQ_HEALTH_FILE).
+    deploy:
+      resources:
+        limits: { memory: 768m }
+
+  outbox-relay:
+    <<: *app
+    build: { context: .., dockerfile: services/outbox-relay/Dockerfile }
+    image: souq/outbox-relay:dev
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: outbox-relay
+      DATABASE_URL: postgres://souq:souq@postgres:5432/souq
+      KAFKA_BOOTSTRAP: redpanda:9092
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+      redpanda-init: { condition: service_completed_successfully }
+    # Two replicas exercise FOR UPDATE SKIP LOCKED: each claims a disjoint batch of outbox rows.
+    deploy:
+      replicas: 2
+      resources:
+        limits: { memory: 256m }
+
+  gateway:
+    <<: *app
+    build: { context: .., dockerfile: apps/gateway/Dockerfile }
+    image: souq/gateway:dev
+    ports: ["4000:4000"]
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: gateway
+      SEARCH_URL: http://search:8001
+      FEEDS_URL: http://feeds:8002
+      REDIS_URL: redis://redis:6379/0
+      PAGE_TOKEN_SECRET: ${PAGE_TOKEN_SECRET:-dev-only-change-me-32-bytes-minimum!!}
+      GATEWAY_API_KEYS: ${GATEWAY_API_KEYS:-dev-admin-key}
+      # Per-IP limit. All storefront traffic arrives from the storefront container's IP, and k6 runs from a
+      # single host, so load tests raise this (e.g. RATE_LIMIT_MAX=100000).
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      redis: { condition: service_healthy }
+      search: { condition: service_healthy }
+      feeds: { condition: service_healthy }
+    healthcheck:
+      <<: *health
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+    deploy:
+      resources:
+        limits: { memory: 384m }
+
+  storefront:
+    <<: *app
+    build: { context: .., dockerfile: apps/storefront/Dockerfile }
+    image: souq/storefront:dev
+    ports: ["3000:3000"]
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: storefront
+      # Read server-side only: every GraphQL call is made from server components, never from the browser.
+      GATEWAY_URL: http://gateway:4000/graphql
+      SOUQ_CONFIG_DIR: /app/config
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      gateway: { condition: service_healthy }
+    healthcheck:
+      <<: *health
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+    deploy:
+      resources:
+        limits: { memory: 384m }

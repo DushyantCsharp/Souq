@@ -1,0 +1,23 @@
+{
+  "$comment": "Uncompressed linux/amd64 image size budgets (MiB) enforced by ci/check_image_size.py in release.yml. search includes the baked int8 ONNX reranker + embedder; raise a budget only with a note in the PR explaining what grew.",
+  "images": {
+    "gateway": {
+      "max_mib": 325
+    },
+    "storefront": {
+      "max_mib": 275
+    },
+    "search": {
+      "max_mib": 1350
+    },
+    "indexer": {
+      "max_mib": 1100
+    },
+    "feeds": {
+      "max_mib": 500
+    },
+    "outbox-relay": {
+      "max_mib": 475
+    }
+  }
+}

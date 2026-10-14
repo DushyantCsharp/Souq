@@ -1,0 +1,74 @@
+name: Prepare eval inputs
+description: >-
+  Everything the souq_evals harness reads that is not in git: the ESCI-derived corpus (data/esci, rebuilt
+  from the raw dataset only when the seed code changes), checksum-verified ONNX models (once
+  models/checksums.txt is committed) and the harness's corpus-embedding cache. Run after ./.github/actions/setup.
+inputs:
+  github-token:
+    description: Token with contents:read to download the model release assets
+    required: true
+  model-release-tag:
+    description: GitHub release holding the model tarballs
+    default: models-v1
+outputs:
+  embedder:
+    description: "bge-m3 when verified models are in models/artifacts, otherwise fake"
+    value: ${{ steps.models.outputs.embedder }}
+runs:
+  using: composite
+  steps:
+    - name: Restore ESCI corpus (data/esci)
+      id: esci
+      uses: actions/cache@v6
+      with:
+        path: data/esci
+        key: esci-${{ hashFiles('scripts/src/souq_scripts/seed/esci.py', 'scripts/src/souq_scripts/taxonomy.py', 'scripts/src/souq_scripts/prices.py', 'scripts/src/souq_scripts/category.py') }}
+    # ~1 GB from the public dataset; it never changes, so it is only fetched on the first corpus build.
+    - name: Restore raw ESCI download
+      if: steps.esci.outputs.cache-hit != 'true'
+      uses: actions/cache@v6
+      with:
+        path: data/raw/esci
+        key: esci-raw-v1
+    - name: Build corpus parquet (no Postgres load)
+      if: steps.esci.outputs.cache-hit != 'true'
+      shell: bash
+      run: uv run --frozen --package souq-scripts souq-seed-esci --no-load
+
+    - name: Restore ONNX models
+      id: models-cache
+      if: hashFiles('models/checksums.txt') != ''
+      uses: actions/cache@v6
+      with:
+        path: |
+          models/artifacts/bge-m3-int8
+          models/artifacts/reranker-int8
+        key: onnx-${{ hashFiles('models/checksums.txt') }}
+    - name: Fetch + verify ONNX models
+      id: models
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TAG: ${{ inputs.model-release-tag }}
+        CACHE_HIT: ${{ steps.models-cache.outputs.cache-hit }}
+      run: |
+        if [[ ! -f models/checksums.txt ]]; then
+          echo "::notice title=eval models::models/checksums.txt is not committed; fake embedder, no reranker"
+          echo "embedder=fake" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [[ "$CACHE_HIT" != true ]]; then
+          python3 ci/fetch_models.py --tag "$TAG" --dest "$RUNNER_TEMP/models" --manifest models/checksums.txt
+          mkdir -p models/artifacts
+          cp -R "$RUNNER_TEMP/models/." models/artifacts/
+        fi
+        # A restored cache is just another input: verify it like a fresh download.
+        python3 ci/verify_checksums.py --manifest models/checksums.txt --root models/artifacts --require-all
+        echo "embedder=bge-m3" >> "$GITHUB_OUTPUT"
+
+    - name: Restore corpus-embedding cache
+      uses: actions/cache@v6
+      with:
+        path: models/artifacts/cache
+        key: eval-vectors-${{ steps.models.outputs.embedder }}-${{ hashFiles('models/checksums.txt', 'evals/golden/**', 'infra/opensearch/templates/**') }}
+        restore-keys: eval-vectors-${{ steps.models.outputs.embedder }}-

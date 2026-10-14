@@ -1,0 +1,15 @@
+{
+  "name": "@souq/models",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src scripts tests && uv run ruff format --check src scripts tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-models pytest tests -m 'not integration and not live and not chaos'",
+    "export": "uv run --package souq-models python scripts/export_all.py",
+    "bench": "uv run --package souq-models python scripts/bench_rerankers.py",
+    "checksums": "uv run --package souq-models python scripts/write_checksums.py"
+  },
+  "dependencies": {
+    "@souq/py-common": "workspace:*"
+  }
+}

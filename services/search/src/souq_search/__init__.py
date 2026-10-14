@@ -1,0 +1,1 @@
+"""Souq search service."""

@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  # Python uv members also live in the pnpm workspace via thin package.json files whose scripts
+  # shell out to `uv run`, so one `pnpm turbo …` drives both toolchains.
+  - "services/*"
+  - "libs/*"
+  - "evals"
+  - "models"
+  - "scripts"
+
+# pnpm 10 blocks dependency lifecycle scripts by default; allow only the native/binary installers we use.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver
+  - "@swc/core"
+  - protobufjs
+  - msgpackr-extract
+  - "@parcel/watcher"

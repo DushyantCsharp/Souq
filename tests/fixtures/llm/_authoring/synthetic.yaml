@@ -1,0 +1,35 @@
+# Hand-authored answers for the LLM query parser, replayed in SOUQ_LLM_MODE=replay.
+# No ANTHROPIC_API_KEY exists in this environment, so these were written by hand (not recorded) and every
+# generated fixture carries "recorded_at": "synthetic". They exist so the LLM code path, its degradation and
+# the +LLM eval ablation can run deterministically; they are NOT a measurement of the live model. Re-record
+# with SOUQ_LLM_MODE=record once a key is available (services/search/README.md).
+#
+# Regenerate fixtures: uv run --package souq-search python services/search/scripts/make_synthetic_fixtures.py
+- {q: "cheap nike running shoes", lang: en,
+   answer: {rewritten_query: "running shoes", price_min: null, price_max: null, currency: null, brands: [Nike], colours: [], sizes: []}}
+- {q: "black dress not too expensive", lang: en,
+   answer: {rewritten_query: "dress", price_min: null, price_max: null, currency: null, brands: [], colours: [black], sizes: []}}
+- {q: "headphones under two hundred dirhams", lang: en,
+   answer: {rewritten_query: "headphones", price_min: null, price_max: 200, currency: AED, brands: [], colours: [], sizes: []}}
+- {q: "samsung phone around 1000 aed", lang: en,
+   answer: {rewritten_query: "phone", price_min: 800, price_max: 1200, currency: AED, brands: [Samsung], colours: [], sizes: []}}
+- {q: "a pair of trainers for my son, budget five hundred", lang: en,
+   answer: {rewritten_query: "boys trainers", price_min: null, price_max: 500, currency: null, brands: [], colours: [], sizes: []}}
+- {q: "something red for a party under a hundred bucks", lang: en,
+   answer: {rewritten_query: "party outfit", price_min: null, price_max: 100, currency: USD, brands: [], colours: [red], sizes: []}}
+- {q: "حذاء رياضي رخيص", lang: ar,
+   answer: {rewritten_query: "حذاء رياضي", price_min: null, price_max: null, currency: null, brands: [], colours: [], sizes: []}}
+- {q: "سماعات بحدود ميتين درهم", lang: ar,
+   answer: {rewritten_query: "سماعات", price_min: 160, price_max: 240, currency: AED, brands: [], colours: [], sizes: []}}
+- {q: "جوال بأقل من الف درهم", lang: ar,
+   answer: {rewritten_query: "جوال", price_min: null, price_max: 1000, currency: AED, brands: [], colours: [], sizes: []}}
+- {q: "فستان سهرة اقل من خمسمية", lang: ar,
+   answer: {rewritten_query: "فستان سهرة", price_min: null, price_max: 500, currency: null, brands: [], colours: [], sizes: []}}
+- {q: "shanta rkhees", lang: auto,
+   answer: {rewritten_query: "شنطة", price_min: null, price_max: null, currency: null, brands: [], colours: [], sizes: []}}
+- {q: "hdeye lel banat ta7t miya dirham", lang: auto,
+   answer: {rewritten_query: "هدية للبنات", price_min: null, price_max: 100, currency: AED, brands: [], colours: [], sizes: []}}
+- {q: "ملابس سباحة نسائية مقاسات كبيرة", lang: ar,
+   answer: {rewritten_query: "ملابس سباحة نسائية مقاسات كبيرة", price_min: null, price_max: null, currency: null, brands: [], colours: [], sizes: []}}
+- {q: "tv around 2000 aed", lang: en,
+   answer: {rewritten_query: "tv", price_min: 1600, price_max: 2400, currency: AED, brands: [], colours: [], sizes: []}}

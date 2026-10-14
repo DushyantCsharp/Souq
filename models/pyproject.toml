@@ -1,0 +1,27 @@
+[project]
+name = "souq-models"
+version = "0.1.0"
+description = "ONNX export/quantisation, latency benchmarks and checksums for the search reranker and embedder"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "souq-common",
+  # Benchmarks run the service's own reranker class so the numbers are for the code path that serves.
+  "souq-search",
+  "onnx>=1.17",
+  "onnxruntime>=1.20",
+  "tokenizers>=0.20",
+  "numpy>=2.0",
+  "httpx>=0.27",
+  "pyarrow>=17",
+]
+
+[tool.uv.sources]
+souq-common = { workspace = true }
+souq-search = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/souq_models"]

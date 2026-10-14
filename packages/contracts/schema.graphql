@@ -1,0 +1,208 @@
+"""
+Souq storefront GraphQL schema (served by apps/gateway at /graphql).
+
+Search is the only read path: the gateway forwards to services/search, which owns ranking and
+pagination. Cursors are the same HMAC-signed page tokens the REST API returns as `next_page_token`.
+"""
+schema {
+  query: Query
+}
+
+type Query {
+  """
+  Bilingual product search. Pagination is forward-only (Relay connection, `first`/`after`).
+  `after` must come from a previous response for the same `input`; otherwise the request fails with
+  extensions.code = INVALID_PAGE_TOKEN.
+  """
+  search(
+    input: SearchInput!
+    "Page size, 1..50."
+    first: Int = 24
+    "`pageInfo.endCursor` of the previous page."
+    after: String
+  ): ProductSearchConnection!
+}
+
+input SearchInput {
+  "Free text in English, Arabic, Arabizi or a mix (1..256 chars)."
+  q: String!
+  "Localizes `Product.title`/`Product.description`; AUTO uses the detected query language."
+  lang: Lang = AUTO
+  filters: FiltersInput
+}
+
+enum Lang {
+  EN
+  AR
+  AUTO
+}
+
+"Explicit filters. They are merged with filters the parser extracts from `q` (explicit wins)."
+input FiltersInput {
+  priceMin: Float
+  priceMax: Float
+  "ISO 4217 code, e.g. AED"
+  currency: String
+  "OR within a field, AND across fields"
+  brands: [String!]
+  colours: [String!]
+  sizes: [String!]
+  "Category path prefix, e.g. \"Electronics > Audio\""
+  category: String
+}
+
+type Filters {
+  priceMin: Float
+  priceMax: Float
+  currency: String
+  brands: [String!]!
+  colours: [String!]!
+  sizes: [String!]!
+  category: String
+}
+
+type ProductSearchConnection {
+  edges: [ProductEdge!]!
+  pageInfo: PageInfo!
+  facets: [Facet!]!
+  "Filters actually applied: explicit filters merged with parsed ones."
+  appliedFilters: Filters!
+  "How the query text was understood."
+  interpretation: QueryInterpretation!
+  "Components that were skipped or failed open for this response; empty when fully healthy."
+  degraded: [Degradation!]!
+  totalEstimate: Int!
+}
+
+type ProductEdge {
+  node: Product!
+  """
+  Pagination is page-granular: every edge carries the page's end cursor (same as
+  `pageInfo.endCursor`), so resuming after any edge continues after the last edge of the page.
+  Null on the last page.
+  """
+  cursor: String
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  "Always false: pagination is forward-only."
+  hasPreviousPage: Boolean!
+  "Always null: pagination is forward-only."
+  startCursor: String
+  endCursor: String
+}
+
+type Product {
+  sku: ID!
+  "Localized by `SearchInput.lang`, falling back to the other language when missing."
+  title: String!
+  "Localized by `SearchInput.lang`, falling back to the other language when missing."
+  description: String
+  brand: String!
+  price: Money!
+  "e.g. \"Electronics > Audio > Headphones\""
+  categoryPath: String!
+  colour: String
+  size: String
+  score: Float!
+  rankSource: RankSource!
+}
+
+type Money {
+  amount: Float!
+  currency: String!
+}
+
+enum RankSource {
+  "Ordered by the cross-encoder reranker"
+  RERANK
+  "Ordered by reciprocal-rank fusion of lexical and vector retrieval"
+  FUSED
+  "Past the rerank window; lexical order"
+  LEXICAL_TAIL
+}
+
+type Facet {
+  "Facet field, e.g. brand, colour, size, category"
+  name: String!
+  buckets: [FacetBucket!]!
+}
+
+type FacetBucket {
+  value: String!
+  count: Int!
+}
+
+type QueryInterpretation {
+  "Query as received"
+  original: String!
+  "After Arabic/Latin normalisation (and Arabizi transliteration)"
+  normalised: String!
+  "Query text used for retrieval after filter phrases were removed or rewritten; null when unchanged"
+  rewritten: String
+  detectedLang: String!
+  script: Script!
+  "Which parser produced `filters`"
+  parser: ParserSource!
+  "Filters the parser extracted from the query text (before merging with explicit filters)"
+  filters: Filters!
+  "Every applied filter value and where it came from (explicit input or the parser)"
+  filterSources: [InterpretedFilter!]!
+  "Tokens that looked like constraints but could not be mapped to a filter"
+  unparsedTokens: [String!]!
+}
+
+enum Script {
+  AR
+  EN
+  MIXED
+  ARABIZI
+}
+
+enum ParserSource {
+  "Deterministic rule parser"
+  RULE
+  "LLM parser"
+  LLM
+  "Semantic cache hit of an earlier LLM parse"
+  CACHE
+}
+
+enum FilterSource {
+  "Passed explicitly in `filters`"
+  EXPLICIT
+  RULE
+  LLM
+  CACHE
+}
+
+enum FilterField {
+  PRICE_MIN
+  PRICE_MAX
+  CURRENCY
+  BRAND
+  COLOUR
+  SIZE
+  CATEGORY
+}
+
+type InterpretedFilter {
+  field: FilterField!
+  "Stringified value (numbers rendered as decimals)"
+  value: String!
+  source: FilterSource!
+}
+
+enum Degradation {
+  "Reranker over budget or down; fused order returned"
+  RERANK
+  "LLM parser timed out or failed; rule-parser result used"
+  LLM_PARSE
+  "Vector retrieval unavailable; lexical only"
+  KNN
+  "Lexical retrieval unavailable; vector only"
+  BM25
+  "Semantic parse cache unavailable"
+  SEMANTIC_CACHE
+}

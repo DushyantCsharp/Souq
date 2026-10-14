@@ -1,0 +1,14 @@
+# Whitelist for services/feeds/Dockerfile (build context = repo root). BuildKit uses this file instead
+# of the root .dockerignore for this Dockerfile.
+*
+!pyproject.toml
+!uv.lock
+!config/*.yaml
+!libs/py-common/pyproject.toml
+!libs/py-common/README*
+!libs/py-common/src/**
+!services/feeds/pyproject.toml
+!services/feeds/README*
+!services/feeds/src/**
+**/__pycache__/**
+**/*.pyc

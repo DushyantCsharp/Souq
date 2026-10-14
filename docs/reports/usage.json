@@ -1,0 +1,32 @@
+{
+ "generated_at": "2026-10-14T07:30:04+00:00",
+ "items": [
+  {
+   "unit": "1k searches",
+   "model": "claude-haiku-5-5",
+   "input_tokens": 8922,
+   "output_tokens": 400,
+   "requests": 6.7,
+   "batch": false,
+   "note": "LLM parse on 0.67 % of golden-set searches (eval share; production share not measured); per-call tokens from 13 recorded live calls"
+  },
+  {
+   "unit": "1k titles translated",
+   "model": "claude-haiku-5-5",
+   "input_tokens": 370260,
+   "output_tokens": 50135,
+   "requests": 1000,
+   "batch": true,
+   "note": "Message Batches msgbatch_019beVXX9dMXG1iY9kLeHjS9 (9,741 requests, strict JSON output); an earlier free-text run of the same size (1.58M in / 0.69M out) was discarded after review"
+  },
+  {
+   "unit": "1k judged pairs",
+   "model": "claude-haiku-5-5",
+   "input_tokens": 403280,
+   "output_tokens": 8800,
+   "requests": 1000,
+   "batch": false,
+   "note": "LLM-judge calibration run, 50 recorded calls (kappa gate refused at 0.599)"
+  }
+ ]
+}

@@ -1,0 +1,165 @@
+# promtool unit tests for the recording and alert rules:
+#   docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus:/p:ro" -w /p/tests \
+#     prom/prometheus:v3.15.0 test rules souq-rules.test.yml
+rule_files:
+  - ../rules/souq-recording.yml
+  - ../rules/souq-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 90% of standard searches slower than 250 ms → burn 18x on every window → fast burn pages.
+  - interval: 1m
+    input_series:
+      - series: 'search_latency_count{path="standard"}'
+        values: '0+100x90'
+      - series: 'search_latency_bucket{path="standard", le="250.0"}'
+        values: '0+10x90'
+    promql_expr_test:
+      - expr: round(slo:search_standard:burn_rate1h)
+        eval_time: 70m
+        exp_samples:
+          - labels: '{}'
+            value: 18
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SearchLatencyBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: page, slo: search-standard }
+            exp_annotations:
+              summary: Standard search path is burning its p95<=250ms error budget >14.4x (1h & 5m windows)
+              description: >-
+                18x burn. Check the Search SLO dashboard stage breakdown and degraded reasons; open a slow
+                exemplar trace to see which stage exceeded its budget.
+              dashboard: http://localhost:3001/d/souq-search-slo
+      - eval_time: 70m
+        alertname: LlmPathLatencyBudgetBurnFast
+        exp_alerts: []
+
+  # Healthy: 1% slow (burn 0.2x) — nothing fires; cache-path searches count towards the standard SLO.
+  - interval: 1m
+    input_series:
+      - series: 'search_latency_count{path="standard"}'
+        values: '0+90x400'
+      - series: 'search_latency_bucket{path="standard", le="250.0"}'
+        values: '0+89x400'
+      - series: 'search_latency_count{path="cache"}'
+        values: '0+10x400'
+      - series: 'search_latency_bucket{path="cache", le="250.0"}'
+        values: '0+10x400'
+    promql_expr_test:
+      - expr: round(slo:search_standard:error_ratio_rate6h, 0.001)
+        eval_time: 6h
+        exp_samples:
+          - labels: '{}'
+            value: 0.01
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: SearchLatencyBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 6h
+        alertname: SearchLatencyBudgetBurnSlow
+        exp_alerts: []
+
+  # LLM path: half the LLM searches exceed 1.2 s → burn 10x: slow-burn ticket, but not a page.
+  - interval: 1m
+    input_series:
+      - series: 'search_latency_count{path="llm"}'
+        values: '0+20x400'
+      - series: 'search_latency_bucket{path="llm", le="1200.0"}'
+        values: '0+10x400'
+    alert_rule_test:
+      - eval_time: 6h20m
+        alertname: LlmPathLatencyBudgetBurnSlow
+        exp_alerts:
+          - exp_labels: { severity: ticket, slo: search-llm }
+            exp_annotations:
+              summary: LLM search path is burning its p95<=1.2s error budget >6x (6h & 30m windows)
+              dashboard: http://localhost:3001/d/souq-search-slo
+      - eval_time: 6h20m
+        alertname: LlmPathLatencyBudgetBurnFast
+        exp_alerts: []
+
+  # Freshness: p95 = 57 s (half the changes land between 30 and 60 s) for > 10 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'index_freshness_seconds_bucket{le="10.0"}'
+        values: '0+10x30'
+      - series: 'index_freshness_seconds_bucket{le="30.0"}'
+        values: '0+50x30'
+      - series: 'index_freshness_seconds_bucket{le="60.0"}'
+        values: '0+100x30'
+      - series: 'index_freshness_seconds_bucket{le="+Inf"}'
+        values: '0+100x30'
+      - series: 'index_freshness_seconds_count'
+        values: '0+100x30'
+    promql_expr_test:
+      - expr: index_freshness_seconds:p95_5m
+        eval_time: 20m
+        exp_samples:
+          - labels: 'index_freshness_seconds:p95_5m'
+            value: 57
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IndexFreshnessP95Breached
+        exp_alerts:
+          - exp_labels: { severity: page, slo: index-freshness }
+            exp_annotations:
+              summary: p95 index freshness is 57s (target <= 30s)
+              description: >-
+                Changes are taking too long to become searchable. Check consumer lag, AIMD batch size and bulk
+                rejections on the Indexing dashboard.
+              dashboard: http://localhost:3001/d/souq-indexing
+
+  # Ratios are recording rules over counters (CLAUDE.md names); DLQ and lag alerts.
+  - interval: 1m
+    input_series:
+      - series: 'search_total{path="standard"}'
+        values: '0+90x30'
+      - series: 'search_total{path="llm"}'
+        values: '0+10x30'
+      - series: 'llm_path_total'
+        values: '0+10x30'
+      - series: 'semantic_cache_lookups_total'
+        values: '0+100x30'
+      - series: 'semantic_cache_hits_total'
+        values: '0+25x30'
+      - series: 'dlq_depth{job="souq/indexer"}'
+        values: '3x30'
+      - series: 'consumer_lag{topic="catalog.changes", partition="0", instance="a"}'
+        values: '6000x30'
+      - series: 'consumer_lag{topic="catalog.changes", partition="0", instance="b"}'
+        values: '5000x30'
+      - series: 'consumer_lag{topic="catalog.changes", partition="1", instance="a"}'
+        values: '5000x30'
+    promql_expr_test:
+      - expr: round(llm_path_ratio, 0.001)
+        eval_time: 10m
+        exp_samples:
+          - labels: '{}'
+            value: 0.1
+      - expr: semantic_cache_hit_ratio
+        eval_time: 10m
+        exp_samples:
+          - labels: 'semantic_cache_hit_ratio'
+            value: 0.25
+      - expr: consumer_lag:total
+        eval_time: 10m
+        exp_samples:
+          - labels: 'consumer_lag:total'
+            value: 11000
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts:
+          - exp_labels: { severity: ticket }
+            exp_annotations:
+              summary: "3 messages are parked in catalog.dlq — inspect with the DLQ admin CLI"
+              dashboard: http://localhost:3001/d/souq-indexing
+      - eval_time: 20m
+        alertname: ConsumerLagHigh
+        exp_alerts:
+          - exp_labels: { severity: ticket }
+            exp_annotations:
+              summary: Indexer is 11k messages behind on catalog.changes
+              dashboard: http://localhost:3001/d/souq-indexing

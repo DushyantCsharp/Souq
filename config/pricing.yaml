@@ -1,0 +1,25 @@
+# LLM price sheet, USD per million tokens (Anthropic first-party API list prices as of 2026-10-06).
+# Used by services/search (cost per LLM parse -> souq.llm.cost_usd / llm_cost_usd_total) and the eval
+# harness (usd_per_1k_queries). Update here when prices change; nothing else hard-codes a price.
+currency: USD
+# Message Batches API requests (async, up to 24 h) are billed at 50 % of the list prices below.
+batch_multiplier: 0.5
+models:
+  claude-haiku-5-5:
+    input_per_mtok: 0.10
+    output_per_mtok: 0.50
+    # Prompts above this many input tokens are billed at the long-context rates for the whole request.
+    long_context_threshold_tokens: 100000
+    long_context_input_per_mtok: 0.50
+    long_context_output_per_mtok: 2.50
+    cache_read_multiplier: 0.1
+    cache_write_5m_multiplier: 1.25
+  claude-haiku-4-5:
+    input_per_mtok: 1.00
+    output_per_mtok: 5.00
+  claude-sonnet-5-5:
+    input_per_mtok: 2.00
+    output_per_mtok: 10.00
+  claude-opus-5-5:
+    input_per_mtok: 4.00
+    output_per_mtok: 20.00

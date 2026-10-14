@@ -1,0 +1,78 @@
+{
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-10-14T06:53:46+00:00",
+  "request": {
+    "max_tokens": 50,
+    "messages": [
+      {
+        "content": "query: حماية شاشة ايفون 6\nproduct: amFilm Glass Screen Protector for iPhone 8, 7, 6S, 6 (4.7 Inch)(2 Pack) Tempered Glass Screen Protector | AMFilm شاشة شاشة لـ آي فون 8 | amFilm",
+        "role": "user"
+      }
+    ],
+    "model": "claude-haiku-5-5",
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "grade": {
+              "enum": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "grade"
+          ],
+          "type": "object"
+        },
+        "type": "json_schema"
+      }
+    },
+    "system": "You grade how well a product matches an e-commerce search query (English, Arabic or Arabizi). 3 = exact match, 2 = substitute (close alternative), 1 = complement (useful with it), 0 = irrelevant. Answer with the grade only, in the JSON schema.",
+    "thinking": {
+      "type": "disabled"
+    }
+  },
+  "response": {
+    "container": null,
+    "content": [
+      {
+        "text": "{\"grade\":3}",
+        "type": "text"
+      }
+    ],
+    "diagnostics": null,
+    "id": "msg_011Cg1gx5mf3GoYMwh7B3YcM",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 419,
+      "output_tokens": 8,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  },
+  "usage": {
+    "input_tokens": 419,
+    "output_tokens": 8
+  }
+}

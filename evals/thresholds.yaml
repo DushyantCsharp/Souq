@@ -1,0 +1,11 @@
+# Absolute floors for `python -m souq_evals` (exit 1 when any is missed), checked on the best production
+# ablation present: rrf_rerank_llm > rrf_rerank > rrf. Set ~3 nDCG points below the first clean offline run
+# (2026-10-13, bge-m3 int8 + mMiniLM int8, rerank_mode=rrf: all .458, en .587, ar .328, arabizi_mixed .459).
+# CI additionally blocks a > 1.0 point nDCG@10 drop against the main-branch report on any slice.
+slices:
+  all: {ndcg@10: 0.43, recall@100: 0.60, zero_result_rate_max: 0.02}
+  en: {ndcg@10: 0.56, recall@100: 0.72}
+  ar: {ndcg@10: 0.30}
+  arabizi_mixed: {ndcg@10: 0.43}
+filter_parse:
+  exact_match: 0.85

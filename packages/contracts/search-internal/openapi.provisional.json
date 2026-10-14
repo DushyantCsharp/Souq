@@ -1,0 +1,168 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "souq-search (provisional)",
+    "version": "0.0.0-provisional",
+    "description": "Hand-written from the CLAUDE.md internal search contract. Codegen prefers search-internal/openapi.json (exported from FastAPI by services/search) whenever it exists."
+  },
+  "paths": {
+    "/search": {
+      "post": {
+        "operationId": "search",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SearchRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SearchResponse"}}}
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "responses": {"200": {"description": "Alive", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}}}
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "responses": {
+          "200": {"description": "Ready", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}},
+          "503": {"description": "Not ready", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true}}}}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Filters": {
+        "type": "object",
+        "properties": {
+          "price_min": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "price_max": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+          "currency": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "brands": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+          "colours": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+          "sizes": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+          "category": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        }
+      },
+      "Cursor": {
+        "type": "object",
+        "required": ["query_key", "pit_id", "window_pos"],
+        "properties": {
+          "query_key": {"type": "string"},
+          "pit_id": {"type": "string"},
+          "window_pos": {"type": "integer"},
+          "search_after": {"anyOf": [{"type": "array", "items": {}}, {"type": "null"}]}
+        }
+      },
+      "SearchOptions": {
+        "type": "object",
+        "properties": {
+          "llm": {"type": "boolean", "default": true},
+          "rerank": {"type": "boolean", "default": true},
+          "debug": {"type": "boolean", "default": false}
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "required": ["q"],
+        "properties": {
+          "q": {"type": "string"},
+          "lang": {"type": "string", "enum": ["en", "ar", "auto"], "default": "auto"},
+          "filters": {"anyOf": [{"$ref": "#/components/schemas/Filters"}, {"type": "null"}]},
+          "cursor": {"anyOf": [{"$ref": "#/components/schemas/Cursor"}, {"type": "null"}]},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 24},
+          "options": {"anyOf": [{"$ref": "#/components/schemas/SearchOptions"}, {"type": "null"}]}
+        }
+      },
+      "Price": {
+        "type": "object",
+        "required": ["amount", "currency"],
+        "properties": {"amount": {"type": "number"}, "currency": {"type": "string"}}
+      },
+      "SearchItem": {
+        "type": "object",
+        "required": ["sku", "title", "brand", "price", "category_path", "score", "rank_source"],
+        "properties": {
+          "sku": {"type": "string"},
+          "title": {"type": "string"},
+          "description": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "brand": {"type": "string"},
+          "price": {"$ref": "#/components/schemas/Price"},
+          "category_path": {"type": "string"},
+          "colour": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "size": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "score": {"type": "number"},
+          "rank_source": {"type": "string", "enum": ["rerank", "fused", "lexical_tail"]}
+        }
+      },
+      "FacetBucket": {
+        "type": "object",
+        "required": ["value", "count"],
+        "properties": {"value": {"type": "string"}, "count": {"type": "integer"}}
+      },
+      "Facet": {
+        "type": "object",
+        "required": ["name", "buckets"],
+        "properties": {
+          "name": {"type": "string"},
+          "buckets": {"type": "array", "items": {"$ref": "#/components/schemas/FacetBucket"}}
+        }
+      },
+      "ParsedQuery": {
+        "type": "object",
+        "required": ["original", "normalised", "detected_lang", "script", "filters", "parser", "unparsed_tokens"],
+        "properties": {
+          "original": {"type": "string"},
+          "normalised": {"type": "string"},
+          "detected_lang": {"type": "string"},
+          "script": {"type": "string", "enum": ["ar", "en", "mixed", "arabizi"]},
+          "rewritten": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "filters": {"$ref": "#/components/schemas/Filters"},
+          "parser": {"type": "string", "enum": ["rule", "llm", "cache"]},
+          "unparsed_tokens": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": ["items", "facets", "applied_filters", "parsed_query", "degraded", "total_estimate", "timings_ms"],
+        "properties": {
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/SearchItem"}},
+          "facets": {"type": "array", "items": {"$ref": "#/components/schemas/Facet"}},
+          "applied_filters": {"$ref": "#/components/schemas/Filters"},
+          "parsed_query": {"$ref": "#/components/schemas/ParsedQuery"},
+          "degraded": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["rerank", "llm_parse", "knn", "bm25", "semantic_cache"]}
+          },
+          "next_cursor": {"anyOf": [{"$ref": "#/components/schemas/Cursor"}, {"type": "null"}]},
+          "total_estimate": {"type": "integer"},
+          "timings_ms": {"type": "object", "additionalProperties": {"type": "number"}}
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "properties": {
+          "loc": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+          "msg": {"type": "string"},
+          "type": {"type": "string"}
+        }
+      },
+      "HTTPValidationError": {
+        "type": "object",
+        "properties": {"detail": {"type": "array", "items": {"$ref": "#/components/schemas/ValidationError"}}}
+      }
+    }
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-10-14T06:48:24+00:00",
+  "request": {
+    "max_tokens": 300,
+    "messages": [
+      {
+        "content": "query: hdeye lel banat ta7t miya dirham\nlanguage: ar\nrule_filters: {}\nunparsed: ta7t miya dirham",
+        "role": "user"
+      }
+    ],
+    "model": "claude-haiku-5-5",
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "brands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "colours": {
+              "items": {
+                "enum": [
+                  "beige",
+                  "black",
+                  "blue",
+                  "brown",
+                  "clear",
+                  "cream",
+                  "gold",
+                  "green",
+                  "grey",
+                  "maroon",
+                  "multicolour",
+                  "navy",
+                  "orange",
+                  "pink",
+                  "purple",
+                  "red",
+                  "silver",
+                  "turquoise",
+                  "white",
+                  "yellow"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "currency": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "AED",
+                    "EGP",
+                    "EUR",
+                    "GBP",
+                    "KWD",
+                    "SAR",
+                    "USD"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "price_max": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "price_min": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rewritten_query": {
+              "type": "string"
+            },
+            "sizes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "rewritten_query",
+            "price_min",
+            "price_max",
+            "currency",
+            "brands",
+            "colours",
+            "sizes"
+          ],
+          "type": "object"
+        },
+        "type": "json_schema"
+      }
+    },
+    "system": "You turn shopping search queries from a UAE marketplace into search filters. Queries can be English, Arabic (any dialect), Arabizi (Arabic in Latin letters, digits for letters: 2=ء/ق 3=ع 5=خ 6=ط 7=ح 9=ق) or a mix of these.\n\nFill every field of the JSON schema:\n- rewritten_query: what the shopper wants, with the price, brand, colour and size words removed and obvious misspellings fixed. Write Arabizi in Arabic script; otherwise keep the query's language. Do not add products the shopper did not mention. Use \"\" if nothing is left.\n- price_min / price_max: numbers or null. \"under/below/less than/up to/اقل من/تحت/ta7t\" set price_max; \"over/above/more than/at least/اكثر من/فوق\" set price_min; \"between A and B/بين A و B\" set both; \"around X/حوالي X\" sets 0.8X to 1.2X rounded to whole numbers. Read number words (\"two hundred\", \"مية\", \"ميتين\", \"الف\"). A vague word such as \"cheap\" or \"رخيص\" on its own sets no price.\n- currency: ISO code when the query states one (درهم/dirham/dhs/aed = AED, ريال = SAR, $/dollar = USD), else null.\n- brands: brand names as usually written in English (for example \"Nike\", \"Samsung\"); [] if none.\n- colours: colours from the allowed list; map Arabic and Arabizi colour words (احمر/حمراء/a7mar = red). [] if none.\n- sizes: clothing or shoe sizes as printed on labels (\"42\", \"XL\", \"M\"); [] if none.\n\nrule_filters were already extracted by a rule parser. Keep them unless the query clearly contradicts them.",
+    "thinking": {
+      "type": "disabled"
+    }
+  },
+  "response": {
+    "container": null,
+    "content": [
+      {
+        "text": "{\"rewritten_query\": \"هدية للبنات\", \"price_min\": null, \"price_max\": 100, \"currency\": \"AED\", \"brands\": [], \"colours\": [], \"sizes\": []}",
+        "type": "text"
+      }
+    ],
+    "diagnostics": null,
+    "id": "msg_011Cg1gYFKDo9HyLtKqMm6ot",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 1335,
+      "output_tokens": 61,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  },
+  "usage": {
+    "input_tokens": 1335,
+    "output_tokens": 61
+  }
+}

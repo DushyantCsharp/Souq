@@ -1,0 +1,54 @@
+apiVersion: 1
+
+# Fixed UIDs: dashboards and the exemplar/trace links below reference them.
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Prometheus
+      timeInterval: 10s
+      # Histogram exemplars carry the OTel trace_id → click a latency dot, land on the trace in Tempo.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      traceQuery:
+        timeShiftEnabled: true
+        spanStartTimeShift: -30m
+        spanEndTimeShift: 30m
+      # Show whether each stage blew its budget right on the span bar.
+      spanBar:
+        type: Tag
+        tag: souq.stage.exceeded
+      # Trace → metrics: jump from a span to the latency series of its service / stage.
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: -10m
+        spanEndTimeShift: 10m
+        tags:
+          - key: souq.stage.name
+            value: stage
+        queries:
+          - name: Search latency p95 by path
+            query: histogram_quantile(0.95, sum by (le, path) (rate(search_latency_bucket[5m])))
+          - name: Stage latency p95
+            query: histogram_quantile(0.95, sum by (le, stage) (rate(stage_latency_bucket{$$__tags}[5m])))
+          - name: Stage budget exceedances
+            query: sum by (stage) (rate(stage_budget_exceeded_total{$$__tags}[5m]))

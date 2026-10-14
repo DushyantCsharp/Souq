@@ -1,0 +1,76 @@
+[project]
+name = "souq-workspace"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+# Globs so new members join automatically. uv skips matched directories that are still empty, but a matched
+# directory that has files and no pyproject.toml is an error, so create pyproject.toml first in a new member.
+members = ["libs/*", "services/*", "evals", "models", "scripts"]
+exclude = ["services/*/node_modules", "libs/*/node_modules"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "testcontainers[postgres,kafka,opensearch,redis]>=4.8",
+  "respx>=0.21",
+  "hypothesis>=6.112",
+  "types-pyyaml>=6.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "integration: needs containers (testcontainers or the compose stack)",
+  "live: calls a real external LLM/API; never in default CI",
+  "chaos: fault-injection tests (kills/pauses containers)",
+  "slow: > 10 s",
+]
+# importlib mode: several members have tests/test_api.py etc.; the default "prepend" mode would collide on
+# module basenames when pytest runs from the repo root across members.
+addopts = "-ra --strict-markers --import-mode=importlib"
+# Setting this replaces pytest's defaults, so they are restated ("'.*'" covers .git/.venv/.next/.hypothesis).
+norecursedirs = [".*", "*.egg", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "data", "artifacts"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+# Generated code (openapi-python-client) and data are not linted. force-exclude applies this even when a
+# package script passes `src` explicitly.
+extend-exclude = ["libs/admin-sdk/src", "models/artifacts", "data"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF", "PT"]
+# RUF001-003 flag Arabic letters that resemble Latin ones as "ambiguous". In a bilingual codebase Arabic text
+# in strings, docstrings and comments is intentional, so these rules only produce noise.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+# Ruff runs from each member directory but uses this config; without this every souq_* import would be
+# classified as third-party because the members' src/ dirs are not under the root project.
+known-first-party = [
+  "souq_common",
+  "souq_search",
+  "souq_indexer",
+  "souq_feeds",
+  "souq_outbox_relay",
+  "souq_evals",
+  "souq_scripts",
+  "souq_models",
+  "souq_admin_sdk",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]

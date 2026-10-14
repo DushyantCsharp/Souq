@@ -1,0 +1,108 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalDependencies": [
+    "config/**",
+    "tsconfig.base.json",
+    "eslint.config.js",
+    "pyproject.toml",
+    "uv.lock"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "SOUQ_LLM_MODE",
+    "SOUQ_EMBEDDER",
+    "SOUQ_RERANKER_MODEL",
+    "SOUQ_CONFIG_DIR"
+  ],
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "KAFKA_BOOTSTRAP",
+    "OPENSEARCH_URL",
+    "SEARCH_URL",
+    "FEEDS_URL",
+    "GATEWAY_URL",
+    "PAGE_TOKEN_SECRET",
+    "GATEWAY_API_KEYS",
+    "ANTHROPIC_API_KEY",
+    "SOUQ_*",
+    "OTEL_*",
+    "UV_*",
+    "VIRTUAL_ENV",
+    "HF_*",
+    "DOCKER_*",
+    "TESTCONTAINERS_*",
+    "CI",
+    "GITHUB_*"
+  ],
+  "tasks": {
+    "codegen": {
+      "dependsOn": [
+        "^codegen"
+      ],
+      "outputs": [
+        "src/generated/**",
+        "generated/**",
+        "src/gql/**"
+      ]
+    },
+    "@souq/contracts#codegen": {
+      "dependsOn": [
+        "^codegen"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/storefront/src/graphql/**"
+      ],
+      "outputs": [
+        "src/generated/**",
+        "generated/**",
+        "$TURBO_ROOT$/apps/storefront/src/gql/**"
+      ]
+    },
+    "build": {
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ]
+    },
+    "lint": {
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ]
+    },
+    "test": {
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ],
+      "outputs": [
+        "coverage/**"
+      ]
+    },
+    "test:integration": {
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ],
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

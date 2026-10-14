@@ -1,0 +1,26 @@
+# Fallback for builds with the repo root as context. Every image in this repo has a stricter
+# <dir>/Dockerfile.dockerignore whitelist that BuildKit uses instead; this file only guards ad-hoc builds
+# from shipping the dataset, model artefacts, local envs or secrets into a build context.
+.git
+.github
+.locks
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.next
+**/.turbo
+**/dist
+**/coverage
+data/
+models/artifacts/
+**/*.onnx
+**/*.onnx_data
+evals/reports/
+loadtest/results/
+.env
+.env.*
+!.env.example

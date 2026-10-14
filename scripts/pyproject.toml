@@ -1,0 +1,38 @@
+[project]
+name = "souq-scripts"
+version = "0.1.0"
+description = "Souq operational scripts: versioned OpenSearch reindex, size backfill, ESCI/translation/feed seeds"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "souq-common",
+  "opensearch-py>=2.7",
+  "psycopg[binary]>=3.2",
+  "pyarrow>=17.0",
+  "faker>=30.0",
+  "httpx>=0.27",
+  "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+# Local MarianMT translation (Helsinki-NLP/opus-mt-en-ar). Heavy, so opt-in: CI never needs it.
+translate = ["transformers>=4.44", "torch>=2.4", "sentencepiece>=0.2", "sacremoses>=0.1"]
+# Claude Message Batches translation provider.
+anthropic = ["anthropic>=0.40"]
+
+[project.scripts]
+souq-reindex = "souq_scripts.reindex:main"
+souq-backfill-size = "souq_scripts.backfill_size:main"
+souq-templates = "souq_scripts.templates:main"
+souq-seed-esci = "souq_scripts.seed.esci:main"
+souq-translate = "souq_scripts.seed.translate:main"
+souq-feedgen = "souq_scripts.seed.feedgen:main"
+
+[tool.uv.sources]
+souq-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/souq_scripts"]

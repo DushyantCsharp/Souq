@@ -1,0 +1,648 @@
+openapi: 3.1.0
+info:
+  title: Souq Public API
+  version: 1.0.0
+  summary: Bilingual (Arabic/English) catalog search and supplier feed ingestion.
+  description: |
+    Served by `apps/gateway`. Search is public; feed endpoints require an API key.
+
+    ## Errors
+    Every non-2xx response is `application/problem+json` (RFC 9457). `type` is a stable URI under
+    `https://souq.dev/problems/`; clients should branch on `type`, not on `title` or `detail`.
+
+    ## Filters in the query string
+    `filters` uses OpenAPI `style: deepObject, explode: true` with the same field names as
+    `applied_filters` in the response:
+
+        GET /v1/search?q=running+shoes&filters[brands]=nike&filters[brands]=adidas&filters[price_max]=300
+
+    * Multi-valued fields (`brands`, `colours`, `sizes`) are given by repeating the key; values are
+      OR-ed within a field and fields are AND-ed together. Values are taken verbatim (no comma splitting).
+    * Unknown filter names, malformed numbers or `price_min > price_max` are rejected with
+      `400 validation-error`.
+    * Explicit filters are merged with filters the query parser extracts from `q`; explicit values win.
+
+    ## Pagination
+    `next_page_token` is opaque. It is HMAC-signed by the gateway, expires together with the
+    underlying search snapshot (minutes), and is bound to the `q`, `lang` and `filters` it was issued
+    for. Send it back as `page_token` with the *same* `q`/`lang`/`filters`; anything else (tampered,
+    expired, different query) yields `400 invalid-page-token`. `null` means there are no more results.
+
+    ## Rate limiting
+    Requests are limited per API key (or per client IP when anonymous). Every response carries
+    `x-ratelimit-limit`, `x-ratelimit-remaining` and `x-ratelimit-reset`; a `429` additionally carries
+    `Retry-After` (seconds).
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://localhost:4000
+    description: Local development gateway
+tags:
+  - name: search
+    description: Product search
+  - name: feeds
+    description: Supplier feed ingestion (API key required)
+  - name: health
+    description: Liveness and readiness probes
+
+paths:
+  /v1/search:
+    get:
+      tags: [search]
+      operationId: search
+      summary: Search the catalog
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Free-text query in English, Arabic, Arabizi or a mix.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+          examples:
+            english: { value: red nike running shoes under 300 }
+            arabic: { value: حذاء رياضي احمر }
+            arabizi: { value: 7ethaa2 adidas }
+        - name: lang
+          in: query
+          required: false
+          description: Response language for titles/descriptions; `auto` uses the detected query language.
+          schema:
+            $ref: '#/components/schemas/LangParam'
+        - name: filters
+          in: query
+          required: false
+          style: deepObject
+          explode: true
+          description: Explicit filters, e.g. `filters[brands]=nike&filters[price_max]=300`. See the API description.
+          schema:
+            $ref: '#/components/schemas/Filters'
+        - name: page_token
+          in: query
+          required: false
+          description: Opaque `next_page_token` from the previous page of the same query.
+          schema:
+            type: string
+            maxLength: 4096
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 24
+      responses:
+        '200':
+          description: Search results. `degraded` lists components that failed open for this response.
+          headers:
+            x-ratelimit-limit: { $ref: '#/components/headers/RateLimitLimit' }
+            x-ratelimit-remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            x-ratelimit-reset: { $ref: '#/components/headers/RateLimitReset' }
+            x-souq-cache: { $ref: '#/components/headers/CacheStatus' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /v1/feeds:
+    post:
+      tags: [feeds]
+      operationId: uploadFeed
+      summary: Upload a supplier feed (CSV or JSONL)
+      description: |
+        The file is streamed to the feeds service without being buffered by the gateway and is
+        imported asynchronously; poll `GET /v1/feeds/{id}` for progress. Row-level problems do not
+        fail the upload: they are counted in `error_counts` and listed under `/errors`.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FeedUpload'
+            encoding:
+              file:
+                contentType: text/csv, application/x-ndjson, application/jsonl, application/octet-stream
+      responses:
+        '202':
+          description: Accepted for import.
+          headers:
+            Location:
+              description: URL of the feed status resource.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedAccepted'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /v1/feeds/{id}:
+    get:
+      tags: [feeds]
+      operationId: getFeed
+      summary: Feed import status with row-level error counts
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FeedId'
+      responses:
+        '200':
+          description: Current import status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedStatus'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /v1/feeds/{id}/errors:
+    get:
+      tags: [feeds]
+      operationId: listFeedErrors
+      summary: Rejected rows of a feed import (paginated)
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FeedId'
+        - name: page_token
+          in: query
+          required: false
+          description: Opaque `next_page_token` from the previous page.
+          schema:
+            type: string
+            maxLength: 1024
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: One page of rejected rows, ordered by row number.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedErrorPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /healthz:
+    get:
+      tags: [health]
+      operationId: healthz
+      summary: Liveness (process is up; checks no dependencies)
+      security: []
+      responses:
+        '200':
+          description: Alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /readyz:
+    get:
+      tags: [health]
+      operationId: readyz
+      summary: Readiness (search service reachable; Redis is reported but fails open)
+      security: []
+      responses:
+        '200':
+          description: Ready to serve.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '503':
+          description: Not ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: One of the keys configured in the gateway's `GATEWAY_API_KEYS`.
+
+  parameters:
+    FeedId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9_-]+$'
+
+  headers:
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: { type: integer, minimum: 0 }
+    RateLimitLimit:
+      description: Requests allowed in the current window.
+      schema: { type: integer }
+    RateLimitRemaining:
+      description: Requests left in the current window.
+      schema: { type: integer }
+    RateLimitReset:
+      description: Seconds until the window resets.
+      schema: { type: integer }
+    CacheStatus:
+      description: Gateway response-cache outcome (`hit`, `miss` or `bypass`); informational only.
+      schema:
+        type: string
+        enum: [hit, miss, bypass]
+
+  responses:
+    BadRequest:
+      description: |
+        Invalid request. `type` is `.../validation-error` (with `errors[]`) or `.../invalid-page-token`.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          examples:
+            invalidPageToken:
+              value:
+                type: https://souq.dev/problems/invalid-page-token
+                title: Invalid page token
+                status: 400
+                detail: The page token was issued for a different query.
+                instance: /v1/search
+            validation:
+              value:
+                type: https://souq.dev/problems/validation-error
+                title: Request validation failed
+                status: 400
+                detail: 1 invalid parameter
+                instance: /v1/search
+                errors:
+                  - { location: query, name: 'filters[price_max]', detail: must be a non-negative number }
+    Unauthorized:
+      description: Missing or unknown API key.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PayloadTooLarge:
+      description: Upload exceeds the gateway limit.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnsupportedMediaType:
+      description: Body is not `multipart/form-data`.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        x-ratelimit-limit: { $ref: '#/components/headers/RateLimitLimit' }
+        x-ratelimit-remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+        x-ratelimit-reset: { $ref: '#/components/headers/RateLimitReset' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://souq.dev/problems/rate-limited
+            title: Too many requests
+            status: 429
+            detail: Rate limit of 120 requests per 1 minute exceeded; retry in 17 s.
+            instance: /v1/search
+    InternalError:
+      description: Unexpected gateway error.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    BadGateway:
+      description: An upstream service returned an invalid or unexpected response.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ServiceUnavailable:
+      description: An upstream service is unreachable or failing (`.../search-unavailable`, `.../feeds-unavailable`).
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GatewayTimeout:
+      description: An upstream service exceeded its latency budget (`.../upstream-timeout`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: |
+            One of `https://souq.dev/problems/{validation-error, invalid-page-token, unauthorized,
+            not-found, payload-too-large, unsupported-media-type, rate-limited, upstream-timeout,
+            search-unavailable, feeds-unavailable, bad-gateway, internal}`.
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        instance: { type: string, description: Request path }
+        request_id: { type: string, description: Correlates with gateway logs and traces. }
+        errors:
+          type: array
+          description: Per-parameter validation failures (validation-error only).
+          items:
+            $ref: '#/components/schemas/InvalidParam'
+      additionalProperties: true
+
+    InvalidParam:
+      type: object
+      required: [location, name, detail]
+      properties:
+        location:
+          type: string
+          enum: [query, path, header, body]
+        name: { type: string }
+        detail: { type: string }
+
+    LangParam:
+      type: string
+      enum: [en, ar, auto]
+      default: auto
+
+    Filters:
+      type: object
+      description: Same shape in requests (`filters[...]`) and responses (`applied_filters`, `parsed_query.filters`).
+      additionalProperties: false
+      properties:
+        price_min: { type: number, minimum: 0 }
+        price_max: { type: number, minimum: 0 }
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 code.
+        brands:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 128 }
+        colours:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 64 }
+          description: Canonical English lowercase colour names (e.g. `red`); Arabic colour words are mapped by the parser.
+        sizes:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 32 }
+        category:
+          type: string
+          maxLength: 512
+          description: Category path prefix, e.g. `Electronics > Audio`.
+
+    SearchResponse:
+      type: object
+      required: [items, facets, applied_filters, parsed_query, degraded, next_page_token, total_estimate]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SearchItem' }
+        facets:
+          type: array
+          items: { $ref: '#/components/schemas/Facet' }
+        applied_filters:
+          $ref: '#/components/schemas/Filters'
+        parsed_query:
+          $ref: '#/components/schemas/ParsedQuery'
+        degraded:
+          type: array
+          description: |
+            Components that failed open for this response. Known values: `rerank`, `llm_parse`, `knn`,
+            `bm25`, `semantic_cache`. Treat unknown values as informational.
+          items: { type: string }
+        next_page_token:
+          type: [string, 'null']
+          description: Opaque token for the next page; `null` on the last page.
+        total_estimate:
+          type: integer
+          minimum: 0
+
+    SearchItem:
+      type: object
+      required: [sku, title, brand, price, category_path, score, rank_source]
+      properties:
+        sku: { type: string }
+        title:
+          type: string
+          description: Localized by `lang` (falls back to the other language).
+        description:
+          type: [string, 'null']
+        brand: { type: string }
+        price: { $ref: '#/components/schemas/Money' }
+        category_path:
+          type: string
+          examples: ['Electronics > Audio > Headphones']
+        colour: { type: [string, 'null'] }
+        size: { type: [string, 'null'] }
+        score: { type: number }
+        rank_source:
+          type: string
+          enum: [rerank, fused, lexical_tail]
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number }
+        currency: { type: string }
+
+    Facet:
+      type: object
+      required: [name, buckets]
+      properties:
+        name:
+          type: string
+          examples: [brand]
+        buckets:
+          type: array
+          items:
+            type: object
+            required: [value, count]
+            properties:
+              value: { type: string }
+              count: { type: integer, minimum: 0 }
+
+    ParsedQuery:
+      type: object
+      description: How the query text was understood.
+      required: [original, normalised, detected_lang, script, filters, parser, unparsed_tokens]
+      properties:
+        original: { type: string }
+        normalised: { type: string }
+        detected_lang: { type: string, examples: [ar] }
+        script:
+          type: string
+          enum: [ar, en, mixed, arabizi]
+        rewritten:
+          type: [string, 'null']
+          description: Retrieval text after filter phrases were removed or rewritten.
+        filters:
+          $ref: '#/components/schemas/Filters'
+        parser:
+          type: string
+          enum: [rule, llm, cache]
+        unparsed_tokens:
+          type: array
+          items: { type: string }
+
+    FeedUpload:
+      type: object
+      required: [file]
+      additionalProperties: false
+      properties:
+        file:
+          type: string
+          format: binary
+          contentMediaType: application/octet-stream
+          description: Feed file. CSV header / JSONL keys are `sku, title_en, title_ar, description_en, description_ar, brand, category_path, price, currency, colour, size, attributes`.
+        format:
+          description: Defaults from the file extension (`.csv`; `.jsonl` / `.ndjson`).
+          $ref: '#/components/schemas/FeedFormat'
+
+    FeedFormat:
+      type: string
+      enum: [csv, jsonl]
+
+    FeedAccepted:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        status: { $ref: '#/components/schemas/FeedState' }
+
+    FeedState:
+      type: string
+      enum: [queued, running, completed, failed]
+
+    FeedStatus:
+      type: object
+      required: [id, status, rows_total, rows_ok, rows_rejected, error_counts]
+      properties:
+        id: { type: string }
+        status: { $ref: '#/components/schemas/FeedState' }
+        rows_total: { type: integer, minimum: 0 }
+        rows_ok: { type: integer, minimum: 0 }
+        rows_rejected: { type: integer, minimum: 0 }
+        error_counts:
+          type: object
+          description: Rejected rows per reject code (see `FeedRowErrorCode`).
+          additionalProperties: { type: integer, minimum: 0 }
+          examples:
+            - { missing_field: 3, invalid_price: 1 }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+        failure_reason:
+          type: [string, 'null']
+          description: Set when `status` is `failed` (whole-file failure, not row errors).
+
+    FeedRowErrorCode:
+      type: string
+      enum:
+        - missing_field
+        - invalid_price
+        - invalid_currency
+        - invalid_json
+        - invalid_category
+        - too_long
+        - duplicate_sku_in_feed
+        - malformed_row
+
+    FeedRowError:
+      type: object
+      required: [row_number, code, message]
+      properties:
+        row_number:
+          type: integer
+          minimum: 1
+          description: 1-based data row number (header excluded).
+        code: { $ref: '#/components/schemas/FeedRowErrorCode' }
+        field: { type: [string, 'null'] }
+        message: { type: string }
+        raw:
+          type: [string, 'null']
+          description: Raw row text, truncated by the feeds service.
+
+    FeedErrorPage:
+      type: object
+      required: [items, next_page_token]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FeedRowError' }
+        next_page_token:
+          type: [string, 'null']
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [ok, failing]

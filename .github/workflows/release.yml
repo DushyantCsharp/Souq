@@ -1,0 +1,157 @@
+name: release
+
+# On a v* tag, for each deployable: build linux/amd64 locally -> Trivy gate (fixable CRITICAL/HIGH) ->
+# size budget -> build + push linux/amd64,linux/arm64 to GHCR with SBOM + max provenance attached by
+# BuildKit -> GitHub artifact attestation (Sigstore) for the pushed digest. Nothing is pushed for an image
+# whose scan or budget fails.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: image (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      id-token: write # Sigstore signing for the attestation
+      attestations: write
+    strategy:
+      # Let every image report its own scan/budget result instead of cancelling siblings mid-push.
+      fail-fast: false
+      matrix:
+        image: [gateway, storefront, search, indexer, feeds, outbox-relay]
+    env:
+      SCAN_REF: souq-scan/${{ matrix.image }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Image name (GHCR requires lowercase)
+        id: name
+        env:
+          OWNER: ${{ github.repository_owner }}
+          IMAGE: ${{ matrix.image }}
+        run: echo "ref=ghcr.io/${OWNER,,}/souq-${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      # search bakes the int8 ONNX reranker + bge-m3 embedder, the indexer the embedder only. They come
+      # from a release asset and are verified file-by-file against the committed models/checksums.txt
+      # before entering the build context.
+      - name: Fetch + verify ONNX models (search, indexer)
+        id: models
+        if: matrix.image == 'search' || matrix.image == 'indexer'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_RELEASE_TAG: ${{ vars.MODEL_RELEASE_TAG || 'models-v1' }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          dest="$RUNNER_TEMP/models"
+          only=()
+          if [[ "$IMAGE" == indexer ]]; then only=(--only bge-m3-int8); fi
+          python3 ci/fetch_models.py --tag "$MODEL_RELEASE_TAG" --dest "$dest" \
+            --manifest models/checksums.txt "${only[@]}"
+          echo "dir=$dest" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Tags + OCI labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.ref }}
+          # Overrides the matching local-default target in docker-bake.hcl.
+          bake-target: meta-${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+
+      - name: Build linux/amd64 for scanning (not pushed)
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
+        with:
+          source: .
+          files: |
+            ./docker-bake.hcl
+            cwd://${{ steps.meta.outputs.bake-file }}
+          targets: ${{ matrix.image }}
+          pull: true # never scan a stale cached base image
+          load: true
+          allow: ${{ (matrix.image == 'search' || matrix.image == 'indexer') && format('fs.read={0}', steps.models.outputs.dir) || '' }}
+          vars: |
+            SEARCH_MODELS_DIR=${{ matrix.image == 'search' && steps.models.outputs.dir || '' }}
+            INDEXER_MODELS_DIR=${{ matrix.image == 'indexer' && steps.models.outputs.dir || '' }}
+          set: |
+            ${{ matrix.image }}.platform=linux/amd64
+            ${{ matrix.image }}.tags=${{ env.SCAN_REF }}
+            ${{ matrix.image }}.cache-from=type=gha,scope=release-${{ matrix.image }}
+            ${{ matrix.image }}.cache-to=type=gha,mode=max,scope=release-${{ matrix.image }}
+
+      - name: Trivy gate (fail on fixable CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.SCAN_REF }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Image size budget (ci/image-budgets.json)
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: python3 ci/check_image_size.py --name "$IMAGE" --image "$SCAN_REF" --require-budget
+
+      - name: Build + push linux/amd64,linux/arm64 with SBOM + provenance
+        id: push
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
+        with:
+          source: .
+          files: |
+            ./docker-bake.hcl
+            cwd://${{ steps.meta.outputs.bake-file }}
+          targets: ${{ matrix.image }}
+          push: true
+          sbom: true
+          provenance: mode=max
+          allow: ${{ (matrix.image == 'search' || matrix.image == 'indexer') && format('fs.read={0}', steps.models.outputs.dir) || '' }}
+          vars: |
+            SEARCH_MODELS_DIR=${{ matrix.image == 'search' && steps.models.outputs.dir || '' }}
+            INDEXER_MODELS_DIR=${{ matrix.image == 'indexer' && steps.models.outputs.dir || '' }}
+          set: |
+            ${{ matrix.image }}.platform=linux/amd64,linux/arm64
+            ${{ matrix.image }}.cache-from=type=gha,scope=release-${{ matrix.image }}
+
+      - name: Pushed digest
+        id: digest
+        env:
+          METADATA: ${{ steps.push.outputs.metadata }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          digest=$(jq -er --arg t "$IMAGE" '.[$t]["containerimage.digest"]' <<<"$METADATA")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "pushed ${IMAGE}@${digest}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest build provenance (Sigstore, pushed to GHCR)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ steps.name.outputs.ref }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true

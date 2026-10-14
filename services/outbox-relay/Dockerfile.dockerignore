@@ -1,0 +1,14 @@
+# Whitelist for services/outbox-relay/Dockerfile (build context = repo root). BuildKit uses this file instead
+# of the root .dockerignore for this Dockerfile.
+*
+!pyproject.toml
+!uv.lock
+!config/*.yaml
+!libs/py-common/pyproject.toml
+!libs/py-common/README*
+!libs/py-common/src/**
+!services/outbox-relay/pyproject.toml
+!services/outbox-relay/README*
+!services/outbox-relay/src/**
+**/__pycache__/**
+**/*.pyc

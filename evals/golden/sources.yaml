@@ -1,0 +1,165 @@
+# Curated sources for the 150-query golden set; scripts/build_golden.py turns this into golden/*.jsonl with
+# graded judgments (0-3) pulled from the ESCI seed (data/esci/judgments.parquet; E=3 S=2 C=1 I=0).
+#
+# label_source per slice:
+#   en                     esci         — ESCI human judgments, used as is.
+#   arabizi_mixed/misspelled esci       — real ESCI queries that are already misspelled; judgments apply as is.
+#   ar, arabizi_mixed/{mixed,arabizi} provisional — the query is our translation of the ESCI query, so its
+#                          judgments are only a starting point; the maintainer must confirm or correct them
+#                          (python -m souq_evals label export/import). Reports flag provisional labels.
+en:
+  - {esci: 51216}   # hoodies black and white
+  - {esci: 38799}   # extra large bolster dog bed
+  - {esci: 9647}    # apple airpods pro charging block
+  - {esci: 13454}   # basketball shoes
+  - {esci: 93866}   # size 11 toddler girl shoes
+  - {esci: 57966}   # kids red masquerade mask
+  - {esci: 37087}   # electric keyboard piano
+  - {esci: 115239}  # ysl parisienne perfume
+  - {esci: 58830}   # knee straps for kids
+  - {esci: 39107}   # fabric shelves
+  - {esci: 104632}  # toys for 7 year old boy
+  - {esci: 8925}    # amusement park lego set
+  - {esci: 47968}   # guitar hero xbox one
+  - {esci: 73682}   # nike sweats for baby boy
+  - {esci: 67170}   # men formal wear
+  - {esci: 111876}  # windows tablet with keyboard
+  - {esci: 54370}   # iphone 8 spigen case
+  - {esci: 107900}  # vans toddler girls
+  - {esci: 49765}   # headphones with microphone
+  - {esci: 114878}  # yellow new born boy outfit
+  - {esci: 58546}   # kitchen curtains yellow color
+  - {esci: 69560}   # mini vending machine
+  - {esci: 47852}   # gucci belts for women
+  - {esci: 9907}    # apple watch series 5
+  - {esci: 19214}   # boys high top cleats
+  - {esci: 90270}   # samsung s5 belt clip holster
+  - {esci: 57689}   # kids big joe bean bag chair
+  - {esci: 112752}  # women's office shoes
+  - {esci: 26057}   # christmas throw pillows
+  - {esci: 29946}   # cream leather sofa
+  - {esci: 86580}   # redmi 5 back cover
+  - {esci: 13364}   # baseball bat
+  - {esci: 109899}  # water bottle with lid
+  - {esci: 80356}   # pink wedges
+  - {esci: 84151}   # pullover nike women
+  - {esci: 54107}   # iphone 11 screen protector
+  - {esci: 100807}  # tascam multitrack recorder
+  - {esci: 73631}   # nike running backpack
+  - {esci: 2421}    # 1ct solitaire engagement ring
+  - {esci: 37947}   # ergonomic desk
+  - {esci: 61385}   # lego table
+  - {esci: 26771}   # clear small bags
+  - {esci: 58246}   # kinect xbox one
+  - {esci: 84228}   # puma boys shoes
+  - {esci: 90292}   # samsung s9
+  - {esci: 67437}   # mens basketball shoes
+  - {esci: 9690}    # apple earbuds
+  - {esci: 107219}  # usb c adapter to micro usb
+  - {esci: 8539}    # amazon echo dot
+  - {esci: 113009}  # womens green cargo pants
+  - {esci: 19260}   # boys school backpack
+  - {esci: 113576}  # wood stove
+  - {esci: 47485}   # grey kitchen table
+  - {esci: 43983}   # galaxy s10 case black and gold
+  - {esci: 65040}   # mail organizer wall mount
+  - {esci: 56923}   # kangol hats for women
+  - {esci: 62489}   # lightweight totes for women
+  - {esci: 37039}   # electric cookie press
+  - {esci: 34573}   # dog thunder jacket
+  - {esci: 45908}   # glass shower towel hook magnetic
+ar:
+  - {esci: 45517, q: "شنطة ظهر للبنات"}                    # girls backpack
+  - {esci: 32560, q: "شنط يد نسائية ماركات"}               # designer handbags for women
+  - {esci: 61279, q: "سيارات ليغو دوبلو"}                   # lego duplo cars
+  - {esci: 63542, q: "فستان سهرة بأكمام طويلة"}             # long sleeve evening dress
+  - {esci: 44296, q: "راوتر واي فاي للألعاب للبيت"}         # gaming wifi routers for home
+  - {esci: 50618, q: "ليقنز رياضي نسائي شتوي"}              # hiking leggings women winter
+  - {esci: 99611, q: "بطانية لف للمواليد خفيفة"}            # swaddle blanket lightweight
+  - {esci: 95219, q: "خلاط سموذي شخصي 500 واط"}            # smoothie blender single serve 500w
+  - {esci: 96540, q: "شنط يد نسائية لامعة"}                # sparkly handbags for women
+  - {esci: 103311, q: "قلادة ديناصور صغيرة"}               # tiny cute t rex necklace
+  - {esci: 81183, q: "سلسال بلاتين رجالي"}                 # platinum chain for men
+  - {esci: 99133, q: "فستان صيفي"}                         # sun dress
+  - {esci: 88308, q: "شنطة تبريد للبحر بعجلات"}            # rolling beach bag cooler
+  - {esci: 105964, q: "طاولة تلفزيون 65 بوصة"}             # tv stand for 65 inch tv
+  - {esci: 53611, q: "شنطة سفر صغيرة للطائرة"}             # international travel carry on bag
+  - {esci: 50585, q: "صندل نسائي بكعب ويدج عالي"}          # high wedges sandals for women
+  - {esci: 15877, q: "هودي بيلي ايليش"}                    # billie eilish hoodie
+  - {esci: 73208, q: "ملابس مواليد أولاد"}                  # newborn baby boy
+  - {esci: 11875, q: "سرير أطفال مع مرتبة"}                 # baby cribs with mattress included
+  - {esci: 17481, q: "بدلة زرقاء للأولاد الصغار"}           # blue suit for baby boy
+  - {esci: 104545, q: "حذاء توي ستوري 4"}                  # toy story 4 shoes
+  - {esci: 34687, q: "زي دمية للبنات الرضع"}                # doll costume for baby girl
+  - {esci: 59936, q: "لابتوب أقل من 150"}                   # laptop less than 150
+  - {esci: 80497, q: "قبعة قرصان نسائية"}                  # pirate hat for women
+  - {esci: 72695, q: "قلائد فضة استرليني نسائية"}           # necklaces for women sterling silver
+  - {esci: 35342, q: "قلم للوح الرسم"}                      # drawing tablet stylus
+  - {esci: 53486, q: "أفلام كاميرا انستاكس"}                # instax camera film
+  - {esci: 77607, q: "بناطيل للبنات المراهقات"}             # pants for teen girls
+  - {esci: 51840, q: "شاحن هواوي سريع"}                    # huawei fast charger
+  - {esci: 80348, q: "تيشيرت وردي للجنسين"}                 # pink unisex tshirt
+  - {esci: 58587, q: "سجادة مطبخ رسمة قطط"}                 # kitchen mat cat theme
+  - {esci: 113461, q: "بنطلون يوغا وندر وومن"}             # wonder woman yoga pants
+  - {esci: 68310, q: "شنطة كتف نسائية"}                     # messenger bag for women
+  - {esci: 2292, q: "لابتوب ألعاب 17 بوصة"}                 # 17 gaming laptop
+  - {esci: 97007, q: "شنطة رياضة"}                          # sports bag
+  - {esci: 45721, q: "بنطلون زي مدرسي للبنات"}              # girls uniform pants
+  - {esci: 111195, q: "فستان حمل أبيض مقاس كبير"}           # white maternity dress xxl
+  - {esci: 99856, q: "ملابس سباحة نسائية مقاسات كبيرة"}     # swimsuits for women plus size
+  - {esci: 67886, q: "جينز رجالي سليم بوت كت"}              # mens slim bootcut jeans
+  - {esci: 100618, q: "توب نسائي بدون أكمام مقاس كبير"}     # tank top plus size women
+  - {esci: 11970, q: "ملابس بنات رضع مضحكة"}                # baby girl clothes funny
+  - {esci: 75933, q: "فستان كاجوال برتقالي"}                # orange casual dress
+  - {esci: 111184, q: "طاولة طويلة بيضاء"}                  # white long table
+  - {esci: 30237, q: "كروكس نسائي مقاس 6"}                  # crocs for women size 6
+  - {esci: 21849, q: "جاكيت لون جملي"}                      # camel jacket
+  - {esci: 79763, q: "سكين رحلات مع غطاء"}                  # picnic knife with cover
+  - {esci: 63324, q: "كيبورد لاسلكي لوجيتك"}                # logitech wireless keyboard
+  - {esci: 11821, q: "أوفرول للأولاد الرضع"}                # baby boy onesies
+  - {esci: 22191, q: "طاولة تخييم"}                         # camping table
+  - {esci: 19808, q: "أباجورة إضاءة قوية"}                  # bright light table lamps
+  - {esci: 2120, q: "أساور ذهب عيار 14 نسائية"}             # 14k gold bracelets for women
+  - {esci: 81174, q: "بوت بنعل عالي"}                       # platform boots
+  - {esci: 19649, q: "فستان رضاعة"}                         # breastfeeding dress
+  - {esci: 38145, q: "مكينة اسبريسو مع مطحنة قهوة"}         # espresso machine with coffee grinder
+  - {esci: 54169, q: "حماية شاشة ايفون 6"}                  # iphone 6 screen protector
+  - {esci: 9672, q: "كيبل شحن ابل"}                         # apple charging cable
+  - {esci: 113165, q: "نظارات شمسية نسائية بولارايزد"}      # womens polarized sunglasses flat
+  - {esci: 73401, q: "مصباح قراءة للسرير"}                  # night reading lamp for bed
+  - {esci: 114289, q: "ألعاب اكس بوكس ون"}                  # xbox one games
+  - {esci: 16276, q: "حلق دائري أسود وذهبي"}                # black and gold hoop earrings
+arabizi_mixed:
+  # natural ESCI misspellings (label_source esci)
+  - {esci: 113786, kind: misspelled}  # woreless chargers for andriods
+  - {esci: 110861, kind: misspelled}  # wheres waldo cosstume for women
+  - {esci: 83876, kind: misspelled}   # ps vita new controler
+  - {esci: 55659, kind: misspelled}   # jean jacket women riped
+  - {esci: 97401, kind: misspelled}   # stain steel deep frying pan
+  - {esci: 6579, kind: misspelled}    # addidas volleyball bag
+  - {esci: 94491, kind: misspelled}   # slip on sandels for men
+  - {esci: 91583, kind: misspelled}   # seinhauser earbuds
+  - {esci: 33351, kind: misspelled}   # dinning table with chairs
+  - {esci: 38750, kind: misspelled}   # extention table
+  # Arabic script + Latin brand/model (provisional)
+  - {esci: 65126, kind: mixed, q: "فرش مكياج elf"}             # makeup brushes elf
+  - {esci: 29259, kind: mixed, q: "كيبورد corsair ابيض"}       # corsair white keyboard
+  - {esci: 26755, kind: mixed, q: "جراب شفاف iphone xr"}       # clear phone case iphone xr
+  - {esci: 83968, kind: mixed, q: "شنطة ps4 vr"}               # ps4 vr case
+  - {esci: 90174, kind: mixed, q: "ساعة galaxy watch 46mm"}    # samsung galaxy watch 46 mm
+  - {esci: 7480, kind: mixed, q: "جراب airpods 2"}             # airpod 2 case cover
+  - {esci: 54145, kind: mixed, q: "شاحن بطارية iphone 6"}      # iphone 6 battery charger
+  - {esci: 18639, kind: mixed, q: "سماعات bose"}               # bose earbuds
+  - {esci: 24804, kind: mixed, q: "روج chanel ثابت"}           # chanel lipstick long lasting
+  - {esci: 82988, kind: mixed, q: "شنط prada نسائية"}          # prada handbags for women
+  # Arabizi (provisional)
+  - {esci: 9772, kind: arabizi, q: "sama3at iphone"}                 # apple phone headphones
+  - {esci: 45588, kind: arabizi, q: "scooter kahraba2i lel banat"}   # girls electric ride on scooter
+  - {esci: 99102, kind: arabizi, q: "jazma sayfiya nisa2i"}          # summer shoes for women
+  - {esci: 13156, kind: arabizi, q: "lo3bet barbie"}                 # barbie doll
+  - {esci: 16371, kind: arabizi, q: "battaniya sawda"}               # black blanket
+  - {esci: 69527, kind: arabizi, q: "kanaba sghira"}                 # mini sofa
+  - {esci: 59925, kind: arabizi, q: "tawlet laptop"}                 # laptop desk
+  - {esci: 63789, kind: arabizi, q: "sama3a bluetooth sot 3ali"}     # loud bluetooth headset
+  - {esci: 39580, kind: arabizi, q: "shantet khasr nisa2i"}          # fanny packs for women
+  - {esci: 57622, kind: arabizi, q: "jazmet matar lel atfal"}        # kid rain boots

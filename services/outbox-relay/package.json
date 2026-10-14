@@ -1,0 +1,14 @@
+{
+  "name": "@souq/outbox-relay",
+  "private": true,
+  "scripts": {
+    "lint": "uv run ruff check src tests && uv run ruff format --check src tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run --package souq-outbox-relay pytest tests -m 'not integration and not live and not chaos'",
+    "test:integration": "uv run --package souq-outbox-relay pytest tests -m integration",
+    "start": "uv run --package souq-outbox-relay souq-outbox-relay"
+  },
+  "dependencies": {
+    "@souq/py-common": "workspace:*"
+  }
+}

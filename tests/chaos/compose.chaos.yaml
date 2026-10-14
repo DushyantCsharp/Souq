@@ -1,0 +1,57 @@
+# Isolated stack for tests/chaos (project name souq-chaos). Never the shared `souq` stack: the chaos test
+# kills this OpenSearch. Ports are offset from the shared stack; heaps are small because the Docker VM is
+# shared (run only while holding .locks/heavy-docker).
+#   docker compose -p souq-chaos -f tests/chaos/compose.chaos.yaml up -d --wait
+name: souq-chaos
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: souq
+      POSTGRES_PASSWORD: souq
+      POSTGRES_DB: souq
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "fsync=off", "-c", "synchronous_commit=off"]
+    ports: ["55433:5432"]
+    tmpfs: ["/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U souq -d souq"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redpanda:
+    image: redpandadata/redpanda:v24.3.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:29092
+    ports: ["29092:29092"]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: "false"
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    ports: ["9201:9200"]
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s' || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 60

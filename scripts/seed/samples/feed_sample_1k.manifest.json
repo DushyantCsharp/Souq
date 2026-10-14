@@ -1,0 +1,77 @@
+{
+ "name": "feed_sample_1k",
+ "seed": 7,
+ "malformed_ratio": 0.01,
+ "row_numbering": "1-based data rows (CSV header excluded; JSONL line number)",
+ "files": [
+  "feed_sample_1k.csv",
+  "feed_sample_1k.jsonl"
+ ],
+ "expected": {
+  "rows_total": 1000,
+  "rows_ok": 990,
+  "rows_rejected": 10,
+  "error_counts": {
+   "missing_field": 2,
+   "invalid_price": 2,
+   "invalid_currency": 1,
+   "invalid_json": 1,
+   "invalid_category": 1,
+   "too_long": 1,
+   "duplicate_sku_in_feed": 1,
+   "malformed_row": 1
+  }
+ },
+ "rejects": [
+  {
+   "row_number": 51,
+   "code": "invalid_price",
+   "field": "price"
+  },
+  {
+   "row_number": 76,
+   "code": "invalid_currency",
+   "field": "currency"
+  },
+  {
+   "row_number": 98,
+   "code": "invalid_price",
+   "field": "price"
+  },
+  {
+   "row_number": 156,
+   "code": "invalid_category",
+   "field": "category_path"
+  },
+  {
+   "row_number": 333,
+   "code": "malformed_row",
+   "field": null
+  },
+  {
+   "row_number": 406,
+   "code": "duplicate_sku_in_feed",
+   "field": "sku"
+  },
+  {
+   "row_number": 550,
+   "code": "missing_field",
+   "field": "brand"
+  },
+  {
+   "row_number": 668,
+   "code": "invalid_json",
+   "field": "attributes"
+  },
+  {
+   "row_number": 842,
+   "code": "missing_field",
+   "field": "sku"
+  },
+  {
+   "row_number": 972,
+   "code": "too_long",
+   "field": "sku"
+  }
+ ]
+}

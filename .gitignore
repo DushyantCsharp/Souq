@@ -1,0 +1,53 @@
+# Node / Turbo
+node_modules/
+.turbo/
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.pnpm-store/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Data and model artefacts (downloaded or generated; see scripts/ and models/)
+data/raw/
+data/esci/
+data/cache/
+data/feeds/*.csv
+data/feeds/*.jsonl
+models/artifacts/
+*.onnx
+evals/reports/*.json
+loadtest/results/
+
+# Coordination locks (directory kept via .gitkeep)
+.locks/*
+!.locks/.gitkeep
+
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+data/feeds/*.manifest.json
+# labelling work files (the merged *_claude_graded.csv files are the record)
+evals/labelling/parts/
+evals/labelling/*_to_label.csv

@@ -1,0 +1,58 @@
+# Single source of truth for latency budgets (ms). Enforced with timeouts — see CLAUDE.md rule 3.
+# Standard path target: p95 <= 250 ms at 200 RPS. LLM path target: p95 <= 1200 ms.
+search:
+  total_standard_ms: 250
+  total_llm_ms: 1200
+  normalise_ms: 5
+  parse_rule_ms: 5
+  semantic_cache_ms: 15
+  parse_llm_ms: 800
+  # Stage budgets re-split after k6: under concurrency embed/bm25/knn each ran ~2x their single-request
+  # times and the old 30/90/60 split skipped kNN on >90% of requests. The 250 ms total is unchanged;
+  # rerank gets whatever the request deadline leaves.
+  embed_ms: 50
+  bm25_ms: 120
+  knn_ms: 80          # after embed; bm25 runs concurrently with embed+knn
+  fuse_ms: 5
+  rerank_ms: 120
+  # Admission control (souq_search.admission): in-flight /search requests per uvicorn worker before shedding
+  # with 503 + Retry-After. Little's law with measured numbers: ~30 RPS/worker x 0.25 s target ~= 8.
+  max_inflight_per_worker: 8
+  shed_retry_after_s: 1
+  rerank_window: 30
+  # How the cross-encoder reorders the window: "replace" (sort by rerank score) or "rrf" (RRF of the
+  # window's fused order and the rerank order, rerank weighted by rerank_rrf_weight). Chosen by evals.
+  rerank_mode: rrf
+  rerank_rrf_weight: 1.0
+  candidates_per_retriever: 100
+  rrf_k: 60
+  pit_keep_alive: 5m
+  pagination_ttl_s: 300     # pagination session (fused order + reranked window) in Redis; = pit_keep_alive
+  llm_tokens_per_query: 1500  # input + output tokens per LLM parse (prompt is sized to stay well under)
+  llm_max_output_tokens: 300
+  semantic_cache_similarity: 0.95  # cosine; hits below this go to the LLM
+  semantic_cache_ttl_s: 86400
+  query_log_flush_ms: 1000
+  query_log_batch: 200
+  readyz_ms: 500
+  # Backstops for calls that have no stage budget of their own (stage calls pass their stage budget).
+  redis_timeout_ms: 250          # socket timeout for pagination sessions + semantic cache commands
+  opensearch_timeout_ms: 2000    # catalog lexicon/coverage refresh, PIT close
+  opensearch_connect_ms: 1000
+  db_connect_timeout_ms: 2000    # query_log writer (background task)
+gateway:
+  search_timeout_ms: 1400   # > search.total_llm_ms + network slack
+  feeds_timeout_ms: 10000
+  response_cache_ttl_s: 60
+  cache_timeout_ms: 25      # Redis response-cache / rate-limit command timeout
+  degraded_response_cache_ttl_s: 5   # responses with non-empty `degraded` are cached only briefly
+storefront:
+  gateway_timeout_ms: 1600  # > gateway.search_timeout_ms + network slack
+indexer:
+  batch_linger_ms: 200
+  bulk_timeout_ms: 30000
+  retry_delays_s: [30, 300]
+  in_process_attempts: 3
+relay:
+  poll_interval_ms: 100
+  batch_size: 500

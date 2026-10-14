@@ -1,0 +1,32 @@
+{
+ "generated_at": "2026-10-14T09:00:00+00:00",
+ "items": [
+  {
+   "unit": "1k searches",
+   "model": "claude-haiku-5-5",
+   "input_tokens": 45000,
+   "output_tokens": 6000,
+   "requests": 100,
+   "batch": false,
+   "note": "test fixture"
+  },
+  {
+   "unit": "1k titles translated",
+   "model": "claude-haiku-5-5",
+   "input_tokens": 120000,
+   "output_tokens": 30000,
+   "requests": 1000,
+   "batch": true,
+   "note": "test fixture, Message Batches"
+  },
+  {
+   "unit": "1k judged pairs",
+   "model": "claude-sonnet-5-5",
+   "input_tokens": 400000,
+   "output_tokens": 20000,
+   "requests": 1000,
+   "batch": false,
+   "note": "test fixture"
+  }
+ ]
+}

@@ -1,0 +1,78 @@
+{
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-10-14T06:53:45+00:00",
+  "request": {
+    "max_tokens": 50,
+    "messages": [
+      {
+        "content": "query: ليقنز رياضي نسائي شتوي\nproduct: Nike Women's NSW Fleece Varsity Plus, Black/White, 2X |  | Nike",
+        "role": "user"
+      }
+    ],
+    "model": "claude-haiku-5-5",
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "grade": {
+              "enum": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "grade"
+          ],
+          "type": "object"
+        },
+        "type": "json_schema"
+      }
+    },
+    "system": "You grade how well a product matches an e-commerce search query (English, Arabic or Arabizi). 3 = exact match, 2 = substitute (close alternative), 1 = complement (useful with it), 0 = irrelevant. Answer with the grade only, in the JSON schema.",
+    "thinking": {
+      "type": "disabled"
+    }
+  },
+  "response": {
+    "container": null,
+    "content": [
+      {
+        "text": "{\"grade\": 2}",
+        "type": "text"
+      }
+    ],
+    "diagnostics": null,
+    "id": "msg_011Cg1gwyimUkLXroUoWH9Jf",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "inference_geo": "global",
+      "input_tokens": 369,
+      "output_tokens": 9,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard"
+    }
+  },
+  "usage": {
+    "input_tokens": 369,
+    "output_tokens": 9
+  }
+}
